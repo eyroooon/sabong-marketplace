@@ -133,10 +133,10 @@ export default function HomePage() {
                 <Video className="h-3.5 w-3.5" /> FEED
               </div>
               <div className="mt-2 text-lg font-black leading-tight sm:text-xl md:mt-3 md:text-3xl">
-                <span className="text-gradient-gold">TikTok</span>-style
+                <span className="text-gradient-gold">Sabungero</span> Feed
               </div>
               <div className="mt-1 text-[11px] leading-snug text-white/50 sm:text-xs md:text-sm">
-                Vertical videos ng pinaka-presko na manok
+                Social platform para sa sabungero — mag-post ng videos
               </div>
             </div>
             <div
@@ -509,8 +509,8 @@ export default function HomePage() {
               },
               {
                 icon: <Video className="h-5 w-5" />,
-                label: "Video Feed",
-                sub: "TikTok-style showcase",
+                label: "Sabungero Feed",
+                sub: "Social platform + video posts",
               },
               {
                 icon: <Lock className="h-5 w-5" />,
@@ -688,8 +688,8 @@ const features = [
   {
     icon: <Video className="h-6 w-6" />,
     color: "from-pink-500 to-rose-600",
-    title: "TikTok-style Video Feed",
-    desc: "Swipe through vertical videos ng mga manok. I-showcase ang bloodline mo sa bagong paraan.",
+    title: "Sabungero Social Feed",
+    desc: "Social media platform na gawa para sa sabungero — mag-post ng videos, i-showcase ang bloodline, at mag-connect sa community.",
     tag: "Unique",
   },
   {
@@ -741,13 +741,13 @@ const features = [
 const mobileSteps = [
   {
     tag: "Step 1 · Discover",
-    title: "Mag-browse sa TikTok-style feed",
-    desc: "Swipe through vertical videos ng mga champion na manok. Verified sellers lang ang lumalabas, kaya walang scam risk.",
+    title: "Mag-browse sa social feed ng mga sabungero",
+    desc: "Social media platform na gawa para sa sabungero community — mag-post, mag-like, at mag-discover ng mga champion na manok. Verified sellers lang ang lumalabas, kaya walang scam risk.",
     features: [
-      "Vertical video feed — swipe up/down",
+      "Post + swipe videos ng mga sabungero",
       "Real-time ratings + verified badge overlay",
       "Filter by bloodline, price, location",
-      "Save favorites for later",
+      "Follow + save favorite sellers",
     ],
     screen: (
       <PhoneMockup>
