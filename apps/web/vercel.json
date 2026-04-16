@@ -1,7 +1,8 @@
 {
-  "buildCommand": "cd ../.. && pnpm install && pnpm --filter @sabong/shared build && pnpm --filter @sabong/web build",
-  "installCommand": "echo 'Skipping default install'",
-  "outputDirectory": ".next",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
+  "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
+  "buildCommand": "cd ../.. && pnpm --filter @sabong/shared build && pnpm --filter @sabong/web build",
+  "outputDirectory": ".next",
   "regions": ["sin1"]
 }
