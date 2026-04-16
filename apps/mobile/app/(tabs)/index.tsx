@@ -1,15 +1,26 @@
 import React from "react";
-import { StyleSheet, Text, View, ScrollView } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Button } from "@/components/ui/Button";
-import { colors, fontSize, fontWeight, gradients, radii } from "@/lib/theme";
+import { ListingCard } from "@/components/listings/ListingCard";
+import { useFeaturedListings } from "@/lib/listings";
+import { colors, fontSize, fontWeight, gradients, radii, spacing } from "@/lib/theme";
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { data: featured, isLoading: featuredLoading } = useFeaturedListings();
+  const featuredListings = featured?.data ?? [];
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.ink }}>
@@ -97,6 +108,45 @@ export default function HomeScreen() {
               />
             </View>
           </View>
+
+          {/* Featured listings rail */}
+          {(featuredLoading || featuredListings.length > 0) && (
+            <View style={styles.featuredSection}>
+              <View style={styles.featuredHeader}>
+                <View>
+                  <Text style={styles.featuredEyebrow}>FEATURED</Text>
+                  <Text style={styles.featuredTitle}>Mga pinaka-hot ngayon</Text>
+                </View>
+                <Text
+                  style={styles.seeAllLink}
+                  onPress={() => router.push("/browse")}
+                  suppressHighlighting
+                >
+                  See all
+                </Text>
+              </View>
+
+              {featuredLoading ? (
+                <View style={styles.featuredLoading}>
+                  <ActivityIndicator color={colors.gold} />
+                </View>
+              ) : (
+                <FlatList
+                  data={featuredListings}
+                  keyExtractor={(item) => item.id}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.featuredList}
+                  ItemSeparatorComponent={() => (
+                    <View style={{ width: 12 }} />
+                  )}
+                  renderItem={({ item }) => (
+                    <ListingCard listing={item} style="row" />
+                  )}
+                />
+              )}
+            </View>
+          )}
 
           {/* Feature cards */}
           <View style={styles.featureGrid}>
@@ -362,5 +412,40 @@ const styles = StyleSheet.create({
   },
   textGold: {
     color: colors.gold,
+  },
+  featuredSection: {
+    marginTop: spacing[8],
+    paddingBottom: spacing[4],
+  },
+  featuredHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    paddingHorizontal: spacing[5],
+    marginBottom: spacing[3],
+  },
+  featuredEyebrow: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.bold,
+    color: colors.gold,
+    letterSpacing: 1,
+  },
+  featuredTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.black,
+    color: colors.white,
+    marginTop: 2,
+  },
+  seeAllLink: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.gold,
+  },
+  featuredList: {
+    paddingHorizontal: spacing[5],
+  },
+  featuredLoading: {
+    paddingVertical: spacing[6],
+    alignItems: "center",
   },
 });

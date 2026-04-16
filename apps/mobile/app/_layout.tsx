@@ -34,6 +34,10 @@ export default function RootLayout() {
               name="(auth)"
               options={{ presentation: "modal" }}
             />
+            <Stack.Screen
+              name="listing/[slug]"
+              options={{ animation: "slide_from_right" }}
+            />
           </Stack>
         </QueryClientProvider>
       </SafeAreaProvider>
