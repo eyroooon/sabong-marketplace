@@ -14,6 +14,7 @@ const sidebarLinks = [
   { href: "/messages", label: "Messages" },
   { href: "/favorites", label: "Favorites" },
   { href: "/notifications", label: "Notifications" },
+  { href: "/plans", label: "Plans & Billing" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -27,7 +28,7 @@ export default function DashboardLayout({
   return (
     <div className="min-h-screen">
       <Header />
-      <div className="mx-auto flex max-w-7xl gap-8 px-4 py-8">
+      <div className="mx-auto flex max-w-7xl gap-4 lg:gap-8 px-4 py-8">
         {/* Sidebar */}
         <aside className="hidden w-56 flex-shrink-0 md:block">
           <nav className="sticky top-24 space-y-1">

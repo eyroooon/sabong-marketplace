@@ -18,7 +18,7 @@ export default function FavoritesPage() {
   async function fetchFavorites() {
     if (!accessToken) return;
     try {
-      const res = await apiGet("/favorites", accessToken);
+      const res = await apiGet<any>("/favorites", accessToken);
       setFavorites(res.data || []);
     } catch {
       setFavorites([]);

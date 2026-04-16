@@ -14,6 +14,12 @@ import { CurrentUser } from "../../common/decorators/current-user.decorator";
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
+  @Get("me/stats")
+  @UseGuards(JwtAuthGuard)
+  getDashboardStats(@CurrentUser("id") userId: string) {
+    return this.usersService.getDashboardStats(userId);
+  }
+
   @Get("me")
   @UseGuards(JwtAuthGuard)
   getMe(@CurrentUser("id") userId: string) {

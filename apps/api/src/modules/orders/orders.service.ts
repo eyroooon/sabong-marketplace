@@ -1,10 +1,13 @@
 import {
   Injectable,
   Inject,
+  Logger,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  UnauthorizedException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { eq, and, or, desc, sql } from "drizzle-orm";
 import { DRIZZLE } from "../../database/database.module";
 import {
@@ -15,12 +18,25 @@ import {
   users,
 } from "../../database/schema";
 import { CreateOrderDto, UpdateOrderStatusDto } from "./dto/create-order.dto";
+import { NotificationsService } from "../notifications/notifications.service";
+import { PayMongoService } from "./paymongo.service";
 
 const PLATFORM_FEE_RATE = 0.05; // 5% commission
+const DELIVERY_MARKUP_RATE = 0.15; // 15% markup on shipping fee
+
+// E-wallet/card methods supported by PayMongo.
+const PAYMONGO_METHODS = new Set(["gcash", "maya", "card"]);
 
 @Injectable()
 export class OrdersService {
-  constructor(@Inject(DRIZZLE) private db: any) {}
+  private readonly logger = new Logger(OrdersService.name);
+
+  constructor(
+    @Inject(DRIZZLE) private db: any,
+    private notificationsService: NotificationsService,
+    private paymongo: PayMongoService,
+    private config: ConfigService,
+  ) {}
 
   async create(buyerId: string, dto: CreateOrderDto) {
     // Get listing
@@ -47,20 +63,18 @@ export class OrdersService {
       throw new BadRequestException("You cannot buy your own listing");
     }
 
-    // Validate delivery address for shipping
-    if (dto.deliveryMethod === "shipping" && !dto.deliveryAddress) {
+    // Delivery address is required — shipping only
+    if (!dto.deliveryAddress) {
       throw new BadRequestException(
-        "Delivery address is required for shipping",
+        "Delivery address is required",
       );
     }
 
     const itemPrice = Number(listing.price);
-    const shippingFee =
-      dto.deliveryMethod === "shipping"
-        ? Number(listing.shippingFee || 0)
-        : 0;
+    const shippingFee = Number(listing.shippingFee || 0);
+    const deliveryMarkup = shippingFee > 0 ? Math.round(shippingFee * DELIVERY_MARKUP_RATE) : 0;
     const platformFee = Math.round(itemPrice * PLATFORM_FEE_RATE * 100) / 100;
-    const totalAmount = itemPrice + shippingFee + platformFee;
+    const totalAmount = itemPrice + shippingFee + deliveryMarkup + platformFee;
 
     // Generate order number
     const orderNumber = await this.generateOrderNumber();
@@ -77,7 +91,7 @@ export class OrdersService {
         platformFee: platformFee.toString(),
         totalAmount: totalAmount.toString(),
         status: "payment_pending",
-        deliveryMethod: dto.deliveryMethod,
+        deliveryMethod: "shipping",
         deliveryAddress: dto.deliveryAddress,
         buyerNotes: dto.buyerNotes,
         escrowStatus: "none",
@@ -102,6 +116,19 @@ export class OrdersService {
       .update(listings)
       .set({ status: "reserved", updatedAt: new Date() })
       .where(eq(listings.id, listing.id));
+
+    // Notify seller about new order
+    if (seller?.userId) {
+      this.notificationsService
+        .create({
+          userId: seller.userId,
+          type: "order_placed",
+          title: "New order received",
+          body: `You have a new order (${order.orderNumber}) for your listing.`,
+          data: { orderId: order.id, orderNumber: order.orderNumber },
+        })
+        .catch(() => {}); // Fire and forget
+    }
 
     return {
       id: order.id,
@@ -190,6 +217,320 @@ export class OrdersService {
     return { ...order, listing, payments: paymentRecords, buyer, seller: sellerProfile };
   }
 
+  async payOrder(orderId: string, userId: string, paymentMethod: string) {
+    const order = await this.getOrderForBuyer(orderId, userId);
+
+    if (!["pending", "payment_pending"].includes(order.status)) {
+      throw new BadRequestException(
+        "Order must be in pending or payment_pending status to pay",
+      );
+    }
+
+    // Use real PayMongo if configured AND the payment method is one it handles
+    // (gcash / maya / card). Otherwise fall back to the simulated flow below.
+    if (
+      this.paymongo.isConfigured() &&
+      PAYMONGO_METHODS.has(paymentMethod)
+    ) {
+      return this.initiatePayMongoPayment(order, paymentMethod);
+    }
+
+    // --- Simulated payment fallback (used for dev/testing) -----------------
+    const simulatedPaymentId = `sim_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+    // Update payment record
+    await this.db
+      .update(payments)
+      .set({
+        status: "completed",
+        paidAt: new Date(),
+        providerPaymentId: simulatedPaymentId,
+        providerResponse: JSON.stringify({
+          simulated: true,
+          provider: paymentMethod === "otc_cash" ? "dragonpay" : "paymongo",
+          method: paymentMethod,
+          processedAt: new Date().toISOString(),
+        }),
+        updatedAt: new Date(),
+      })
+      .where(eq(payments.orderId, orderId));
+
+    // Update order status
+    const [updated] = await this.db
+      .update(orders)
+      .set({
+        status: "paid",
+        paidAt: new Date(),
+        escrowStatus: "held",
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+
+    // Notify seller that payment was received
+    const [seller] = await this.db
+      .select()
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.id, order.sellerId))
+      .limit(1);
+
+    if (seller?.userId) {
+      this.notificationsService
+        .create({
+          userId: seller.userId,
+          type: "payment_received",
+          title: "Payment received",
+          body: `Payment for order ${order.orderNumber} has been received. Please confirm the order.`,
+          data: { orderId: order.id, orderNumber: order.orderNumber },
+        })
+        .catch(() => {});
+    }
+
+    return { id: updated.id, status: updated.status, escrowStatus: updated.escrowStatus };
+  }
+
+  /**
+   * Start a real PayMongo payment: creates a Source (for e-wallets) or a
+   * Payment Intent (for cards) and returns a checkout URL for the buyer.
+   * The order stays in `payment_pending` until a webhook confirms payment.
+   */
+  private async initiatePayMongoPayment(order: any, paymentMethod: string) {
+    const webUrl = this.config.get<string>("WEB_URL", "http://localhost:3000");
+    const successUrl = `${webUrl}/orders/${order.id}?payment=success`;
+    const failedUrl = `${webUrl}/orders/${order.id}?payment=failed`;
+    const amount = Number(order.totalAmount);
+
+    const metadata = {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      buyerId: order.buyerId,
+    };
+
+    let checkoutUrl: string | null = null;
+    let providerId = "";
+    let providerType: "source" | "payment_intent" = "source";
+    let providerResponse: any;
+
+    try {
+      if (paymentMethod === "card") {
+        const intent = await this.paymongo.createPaymentIntent(
+          amount,
+          `BloodlinePH order ${order.orderNumber}`,
+          metadata,
+        );
+        providerId = intent.data.id;
+        providerType = "payment_intent";
+        providerResponse = intent;
+        // Cards do not get a simple hosted-checkout URL; the frontend uses
+        // the client_key to attach a Payment Method. Surface the client_key
+        // via the redirect URL so the web app can handle it.
+        checkoutUrl = `${webUrl}/orders/${order.id}?pi=${intent.data.id}`;
+      } else {
+        const ewalletType: "gcash" | "paymaya" =
+          paymentMethod === "maya" ? "paymaya" : "gcash";
+        const source = await this.paymongo.createSource(
+          ewalletType,
+          amount,
+          successUrl,
+          failedUrl,
+          metadata,
+        );
+        providerId = source.data.id;
+        providerType = "source";
+        providerResponse = source;
+        checkoutUrl = source.data.attributes.redirect.checkout_url;
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `PayMongo initiation failed for order ${order.orderNumber}: ${err.message}`,
+      );
+      throw new BadRequestException(
+        "Unable to start payment. Please try again.",
+      );
+    }
+
+    // Update payment record to track the provider reference.
+    await this.db
+      .update(payments)
+      .set({
+        status: "pending",
+        providerPaymentId: providerId,
+        providerResponse: JSON.stringify({
+          provider: "paymongo",
+          providerType,
+          method: paymentMethod,
+          response: providerResponse,
+        }),
+        updatedAt: new Date(),
+      })
+      .where(eq(payments.orderId, order.id));
+
+    return {
+      orderId: order.id,
+      status: "payment_pending",
+      checkoutUrl,
+      provider: "paymongo",
+      providerType,
+      providerId,
+    };
+  }
+
+  /**
+   * Handle a PayMongo webhook. Verifies the signature and, for
+   * `source.chargeable` / `payment.paid` events, marks the order paid
+   * and updates escrow.
+   */
+  async handlePayMongoWebhook(rawBody: string, signatureHeader: string) {
+    const secret = this.paymongo.getWebhookSecret();
+    if (!secret) {
+      this.logger.warn(
+        "Received PayMongo webhook but PAYMONGO_WEBHOOK_SECRET is not configured",
+      );
+      throw new UnauthorizedException("Webhook secret not configured");
+    }
+    if (
+      !this.paymongo.verifyWebhookSignature(rawBody, signatureHeader, secret)
+    ) {
+      throw new UnauthorizedException("Invalid webhook signature");
+    }
+
+    let event: any;
+    try {
+      event = JSON.parse(rawBody);
+    } catch {
+      throw new BadRequestException("Invalid webhook payload");
+    }
+
+    const attrs = event?.data?.attributes || {};
+    const eventType: string = attrs.type || "";
+    const dataObj = attrs?.data;
+
+    this.logger.log(`PayMongo webhook event: ${eventType}`);
+
+    if (eventType === "source.chargeable") {
+      // Source is ready to be charged. Create the Payment, then mark the
+      // order as paid.
+      const sourceId = dataObj?.id;
+      const metadata = dataObj?.attributes?.metadata || {};
+      const orderId = metadata.orderId;
+      if (!orderId) {
+        this.logger.warn(
+          `source.chargeable missing orderId metadata (source ${sourceId})`,
+        );
+        return { received: true };
+      }
+      const [order] = await this.db
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .limit(1);
+      if (!order) {
+        this.logger.warn(
+          `source.chargeable references unknown order ${orderId}`,
+        );
+        return { received: true };
+      }
+      if (order.status === "paid" || order.status === "completed") {
+        return { received: true, alreadyPaid: true };
+      }
+      try {
+        await this.paymongo.createPaymentFromSource(
+          sourceId,
+          Number(order.totalAmount),
+          `BloodlinePH order ${order.orderNumber}`,
+        );
+      } catch (err: any) {
+        this.logger.error(
+          `Failed to create PayMongo payment from source ${sourceId}: ${err.message}`,
+        );
+        // Continue and still mark paid on payment.paid event.
+        return { received: true, error: err.message };
+      }
+      await this.markOrderPaid(order, sourceId);
+      return { received: true, orderId };
+    }
+
+    if (eventType === "payment.paid") {
+      const paymentId = dataObj?.id;
+      const metadata = dataObj?.attributes?.metadata || {};
+      let orderId: string | undefined = metadata.orderId;
+
+      // Fallback: look up order via stored providerPaymentId.
+      if (!orderId && paymentId) {
+        const [pay] = await this.db
+          .select()
+          .from(payments)
+          .where(eq(payments.providerPaymentId, paymentId))
+          .limit(1);
+        if (pay) orderId = pay.orderId;
+      }
+
+      if (!orderId) {
+        this.logger.warn(
+          `payment.paid missing orderId metadata (payment ${paymentId})`,
+        );
+        return { received: true };
+      }
+      const [order] = await this.db
+        .select()
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .limit(1);
+      if (!order) return { received: true };
+      if (order.status === "paid" || order.status === "completed") {
+        return { received: true, alreadyPaid: true };
+      }
+      await this.markOrderPaid(order, paymentId || "paymongo-paid");
+      return { received: true, orderId };
+    }
+
+    // Unhandled event types are acknowledged so PayMongo stops retrying.
+    return { received: true, ignored: eventType };
+  }
+
+  /**
+   * Shared helper: mark the order as paid, update escrow, update the payment
+   * record, and notify the seller. Idempotent against already-paid orders.
+   */
+  private async markOrderPaid(order: any, providerPaymentId: string) {
+    await this.db
+      .update(payments)
+      .set({
+        status: "completed",
+        paidAt: new Date(),
+        providerPaymentId,
+        updatedAt: new Date(),
+      })
+      .where(eq(payments.orderId, order.id));
+
+    await this.db
+      .update(orders)
+      .set({
+        status: "paid",
+        paidAt: new Date(),
+        escrowStatus: "held",
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, order.id));
+
+    const [seller] = await this.db
+      .select()
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.id, order.sellerId))
+      .limit(1);
+    if (seller?.userId) {
+      this.notificationsService
+        .create({
+          userId: seller.userId,
+          type: "payment_received",
+          title: "Payment received",
+          body: `Payment for order ${order.orderNumber} has been received. Please confirm the order.`,
+          data: { orderId: order.id, orderNumber: order.orderNumber },
+        })
+        .catch(() => {});
+    }
+  }
+
   async confirmOrder(orderId: string, userId: string) {
     const order = await this.getOrderForSeller(orderId, userId);
 
@@ -206,6 +547,17 @@ export class OrdersService {
       })
       .where(eq(orders.id, orderId))
       .returning();
+
+    // Notify buyer
+    this.notificationsService
+      .create({
+        userId: order.buyerId,
+        type: "order_confirmed",
+        title: "Order confirmed",
+        body: `Your order ${order.orderNumber} has been confirmed by the seller.`,
+        data: { orderId: order.id },
+      })
+      .catch(() => {});
 
     return { id: updated.id, status: updated.status };
   }
@@ -229,6 +581,17 @@ export class OrdersService {
       })
       .where(eq(orders.id, orderId))
       .returning();
+
+    // Notify buyer
+    this.notificationsService
+      .create({
+        userId: order.buyerId,
+        type: "order_shipped",
+        title: "Order shipped",
+        body: `Your order ${order.orderNumber} has been shipped.${dto.trackingNumber ? ` Tracking: ${dto.trackingNumber}` : ""}`,
+        data: { orderId: order.id },
+      })
+      .catch(() => {});
 
     return { id: updated.id, status: updated.status };
   }
@@ -287,6 +650,24 @@ export class OrdersService {
       })
       .where(eq(sellerProfiles.id, order.sellerId));
 
+    // Notify seller about completion
+    const [seller] = await this.db
+      .select()
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.id, order.sellerId))
+      .limit(1);
+    if (seller?.userId) {
+      this.notificationsService
+        .create({
+          userId: seller.userId,
+          type: "order_completed",
+          title: "Order completed",
+          body: `Order ${order.orderNumber} has been completed. Payment released.`,
+          data: { orderId: order.id },
+        })
+        .catch(() => {});
+    }
+
     return { id: updated.id, status: updated.status };
   }
 
@@ -333,6 +714,39 @@ export class OrdersService {
       .update(listings)
       .set({ status: "active", updatedAt: new Date() })
       .where(eq(listings.id, order.listingId));
+
+    // Notify the other party about cancellation
+    const cancelledByBuyer = order.buyerId === userId;
+    if (cancelledByBuyer) {
+      // Notify seller
+      const [seller] = await this.db
+        .select()
+        .from(sellerProfiles)
+        .where(eq(sellerProfiles.id, order.sellerId))
+        .limit(1);
+      if (seller?.userId) {
+        this.notificationsService
+          .create({
+            userId: seller.userId,
+            type: "order_cancelled",
+            title: "Order cancelled",
+            body: `Order ${order.orderNumber} was cancelled by the buyer.`,
+            data: { orderId: order.id },
+          })
+          .catch(() => {});
+      }
+    } else {
+      // Notify buyer
+      this.notificationsService
+        .create({
+          userId: order.buyerId,
+          type: "order_cancelled",
+          title: "Order cancelled",
+          body: `Order ${order.orderNumber} was cancelled by the seller.`,
+          data: { orderId: order.id },
+        })
+        .catch(() => {});
+    }
 
     return { id: updated.id, status: updated.status };
   }

@@ -4,7 +4,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from "@nestjs/common";
-import { eq, and, desc, asc, gte, lte, sql, ilike } from "drizzle-orm";
+import { eq, and, or, desc, asc, gte, lte, sql, ilike } from "drizzle-orm";
 import { DRIZZLE } from "../../database/database.module";
 import {
   listings,
@@ -13,10 +13,18 @@ import {
 } from "../../database/schema";
 import { generateSlug } from "@sabong/shared";
 import { CreateListingDto } from "./dto/create-listing.dto";
+import { NotificationsService } from "../notifications/notifications.service";
+import { StorageService } from "../../common/storage/storage.service";
+import { SellersService } from "../sellers/sellers.service";
 
 @Injectable()
 export class ListingsService {
-  constructor(@Inject(DRIZZLE) private db: any) {}
+  constructor(
+    @Inject(DRIZZLE) private db: any,
+    private notificationsService: NotificationsService,
+    private storageService: StorageService,
+    private sellersService: SellersService,
+  ) {}
 
   async create(userId: string, dto: CreateListingDto) {
     // Get seller profile
@@ -29,6 +37,9 @@ export class ListingsService {
     if (!seller) {
       throw new ForbiddenException("You must be a seller to create listings");
     }
+
+    // Enforce plan's active listing limit
+    await this.sellersService.checkListingLimit(userId);
 
     const slug = generateSlug(dto.title);
 
@@ -58,7 +69,6 @@ export class ListingsService {
         shippingAvailable: dto.shippingAvailable ?? false,
         shippingAreas: dto.shippingAreas || "local",
         shippingFee: dto.shippingFee?.toString(),
-        meetupAvailable: dto.meetupAvailable ?? true,
         status: "draft",
       })
       .returning();
@@ -93,6 +103,7 @@ export class ListingsService {
     const [seller] = await this.db
       .select({
         id: sellerProfiles.id,
+        userId: sellerProfiles.userId,
         farmName: sellerProfiles.farmName,
         avgRating: sellerProfiles.avgRating,
         verificationStatus: sellerProfiles.verificationStatus,
@@ -115,6 +126,7 @@ export class ListingsService {
   async browse(filters: {
     category?: string;
     breed?: string;
+    search?: string;
     minPrice?: number;
     maxPrice?: number;
     province?: string;
@@ -134,6 +146,15 @@ export class ListingsService {
     }
     if (filters.breed) {
       conditions.push(ilike(listings.breed, `%${filters.breed}%`));
+    }
+    if (filters.search) {
+      conditions.push(
+        or(
+          ilike(listings.title, `%${filters.search}%`),
+          ilike(listings.description, `%${filters.search}%`),
+          ilike(listings.breed, `%${filters.search}%`),
+        )!,
+      );
     }
     if (filters.minPrice) {
       conditions.push(gte(listings.price, filters.minPrice.toString()));
@@ -196,10 +217,30 @@ export class ListingsService {
 
     const imageMap = new Map(images.map((img: any) => [img.listingId, img]));
 
-    const results = data.map((listing: any) => ({
-      ...listing,
-      primaryImage: imageMap.get(listing.id)?.url || null,
-    }));
+    // Get seller verification statuses
+    const sellerIds = [...new Set(data.map((l: any) => l.sellerId))];
+    let sellerMap = new Map<string, any>();
+    if (sellerIds.length > 0) {
+      const sellers = await this.db
+        .select({
+          id: sellerProfiles.id,
+          farmName: sellerProfiles.farmName,
+          verificationStatus: sellerProfiles.verificationStatus,
+        })
+        .from(sellerProfiles)
+        .where(sql`${sellerProfiles.id} IN ${sellerIds}`);
+      sellerMap = new Map(sellers.map((s: any) => [s.id, s]));
+    }
+
+    const results = data.map((listing: any) => {
+      const seller = sellerMap.get(listing.sellerId);
+      return {
+        ...listing,
+        primaryImage: imageMap.get(listing.id)?.url || null,
+        sellerVerified: seller?.verificationStatus === "verified",
+        sellerName: seller?.farmName || null,
+      };
+    });
 
     return {
       data: results,
@@ -224,6 +265,17 @@ export class ListingsService {
       })
       .where(eq(listings.id, listing.id))
       .returning();
+
+    // Notify seller that their listing is now live
+    this.notificationsService
+      .create({
+        userId,
+        type: "listing_published",
+        title: "Listing published",
+        body: `Your listing "${updated.title}" is now live and visible to buyers.`,
+        data: { listingId: updated.id, slug: updated.slug },
+      })
+      .catch(() => {}); // Fire and forget
 
     return { id: updated.id, status: updated.status };
   }
@@ -300,6 +352,85 @@ export class ListingsService {
       .limit(12);
 
     return { data };
+  }
+
+  async uploadImages(listingId: string, userId: string, files: Express.Multer.File[]) {
+    await this.verifyOwnership(listingId, userId);
+
+    // Check how many images already exist for this listing
+    const existingImages = await this.db
+      .select()
+      .from(listingImages)
+      .where(eq(listingImages.listingId, listingId));
+
+    const hasPrimary = existingImages.some((img: any) => img.isPrimary);
+
+    const records = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const url = await this.storageService.uploadFile(file, "images");
+      const isPrimary = !hasPrimary && i === 0;
+
+      const [record] = await this.db
+        .insert(listingImages)
+        .values({
+          listingId,
+          url,
+          altText: file.originalname,
+          sortOrder: existingImages.length + i,
+          isPrimary,
+        })
+        .returning();
+
+      records.push(record);
+    }
+
+    return { images: records };
+  }
+
+  async deleteImage(listingId: string, imageId: string, userId: string) {
+    await this.verifyOwnership(listingId, userId);
+
+    const [image] = await this.db
+      .select()
+      .from(listingImages)
+      .where(
+        and(
+          eq(listingImages.id, imageId),
+          eq(listingImages.listingId, listingId),
+        ),
+      )
+      .limit(1);
+
+    if (!image) {
+      throw new NotFoundException("Image not found");
+    }
+
+    // Delete the file from storage (R2 or local disk)
+    await this.storageService.delete(image.url);
+
+    await this.db
+      .delete(listingImages)
+      .where(eq(listingImages.id, imageId));
+
+    // If deleted image was primary, set the next image as primary
+    if (image.isPrimary) {
+      const [nextImage] = await this.db
+        .select()
+        .from(listingImages)
+        .where(eq(listingImages.listingId, listingId))
+        .orderBy(asc(listingImages.sortOrder))
+        .limit(1);
+
+      if (nextImage) {
+        await this.db
+          .update(listingImages)
+          .set({ isPrimary: true })
+          .where(eq(listingImages.id, nextImage.id));
+      }
+    }
+
+    return { message: "Image deleted" };
   }
 
   private async verifyOwnership(listingId: string, userId: string) {

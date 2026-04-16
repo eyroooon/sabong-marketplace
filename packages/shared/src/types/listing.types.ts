@@ -47,7 +47,7 @@ export interface Listing {
   shippingAvailable: boolean;
   shippingAreas: ShippingArea;
   shippingFee: number | null;
-  meetupAvailable: boolean;
+  shippingRequired: boolean;
   viewCount: number;
   inquiryCount: number;
   favoriteCount: number;

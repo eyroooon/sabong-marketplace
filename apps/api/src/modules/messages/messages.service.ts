@@ -6,17 +6,16 @@ import {
 } from "@nestjs/common";
 import { eq, and, or, desc, sql } from "drizzle-orm";
 import { DRIZZLE } from "../../database/database.module";
-import {
-  conversations,
-  messages,
-  listings,
-  users,
-  sellerProfiles,
-} from "../../database/schema";
+import { conversations, messages, users } from "../../database/schema";
+
+import { MessagesGateway } from "./messages.gateway";
 
 @Injectable()
 export class MessagesService {
-  constructor(@Inject(DRIZZLE) private db: any) {}
+  constructor(
+    @Inject(DRIZZLE) private db: any,
+    private gateway: MessagesGateway,
+  ) {}
 
   async getConversations(userId: string) {
     const data = await this.db
@@ -127,11 +126,27 @@ export class MessagesService {
       .returning();
 
     // Create the first message
-    await this.db.insert(messages).values({
+    const [firstMessage] = await this.db
+      .insert(messages)
+      .values({
+        conversationId: conv.id,
+        senderId: buyerId,
+        content: initialMessage,
+        messageType: "text",
+      })
+      .returning();
+
+    // Notify seller about new conversation via WebSocket
+    this.gateway.sendToUser(sellerId, "newConversation", {
+      conversationId: conv.id,
+    });
+    this.gateway.sendMessageToConversation(conv.id, {
+      id: firstMessage.id,
       conversationId: conv.id,
       senderId: buyerId,
       content: initialMessage,
       messageType: "text",
+      createdAt: firstMessage.createdAt,
     });
 
     return { conversationId: conv.id, isNew: true };
@@ -171,6 +186,21 @@ export class MessagesService {
         updatedAt: new Date(),
       })
       .where(eq(conversations.id, conversationId));
+
+    // Emit real-time WebSocket events
+    const recipientId = isBuyer ? conv.sellerId : conv.buyerId;
+    this.gateway.sendMessageToConversation(conversationId, {
+      id: message.id,
+      conversationId,
+      senderId,
+      content,
+      messageType,
+      createdAt: message.createdAt,
+    });
+    this.gateway.sendToUser(recipientId, "conversationUpdated", {
+      conversationId,
+      lastMessage: content,
+    });
 
     return message;
   }

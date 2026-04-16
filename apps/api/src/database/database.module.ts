@@ -1,7 +1,8 @@
 import { Module, Global } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import * as postgresModule from "postgres";
+const postgres = (postgresModule as any).default || postgresModule;
 import * as schema from "./schema";
 
 export const DRIZZLE = Symbol("DRIZZLE");

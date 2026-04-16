@@ -10,7 +10,7 @@ export type OrderStatus =
   | "disputed"
   | "resolved";
 
-export type DeliveryMethod = "meetup" | "shipping";
+export type DeliveryMethod = "shipping";
 
 export type PaymentMethod =
   | "gcash"

@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { formatPHP } from "@sabong/shared";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// Strip /api suffix if present so we get the base host for static assets
+const API_HOST = API_URL.replace(/\/api\/?$/, "");
+
 interface ListingCardProps {
   listing: {
     id: string;
@@ -15,22 +19,41 @@ interface ListingCardProps {
     locationProvince: string;
     locationCity: string;
     primaryImage?: string | null;
+    images?: { url: string; isPrimary?: boolean }[] | null;
     viewCount: number;
     favoriteCount: number;
+    sellerVerified?: boolean;
+    sellerName?: string | null;
   };
 }
 
+function getImageUrl(listing: ListingCardProps["listing"]): string | null {
+  if (listing.primaryImage) {
+    // If it's already a full URL, use as-is; otherwise prefix with API host
+    if (listing.primaryImage.startsWith("http")) return listing.primaryImage;
+    return `${API_HOST}${listing.primaryImage}`;
+  }
+  if (listing.images && listing.images.length > 0) {
+    const primary = listing.images.find((img) => img.isPrimary) || listing.images[0];
+    if (primary.url.startsWith("http")) return primary.url;
+    return `${API_HOST}${primary.url}`;
+  }
+  return null;
+}
+
 export function ListingCard({ listing }: ListingCardProps) {
+  const imageUrl = getImageUrl(listing);
+
   return (
     <Link
       href={`/listings/${listing.slug}`}
       className="group overflow-hidden rounded-xl border border-border bg-card transition-shadow hover:shadow-md"
     >
       {/* Image */}
-      <div className="aspect-square bg-muted">
-        {listing.primaryImage ? (
+      <div className="relative aspect-square bg-muted">
+        {imageUrl ? (
           <img
-            src={listing.primaryImage}
+            src={imageUrl}
             alt={listing.title}
             className="h-full w-full object-cover transition-transform group-hover:scale-105"
           />
@@ -51,6 +74,18 @@ export function ListingCard({ listing }: ListingCardProps) {
               />
             </svg>
           </div>
+        )}
+        {listing.sellerVerified && (
+          <span className="absolute right-2 top-2 inline-flex items-center gap-0.5 rounded-full bg-green-600 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-sm">
+            <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Verified
+          </span>
         )}
       </div>
 

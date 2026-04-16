@@ -10,12 +10,9 @@ export class CreateOrderDto {
   @IsUUID()
   listingId: string;
 
-  @IsEnum(["meetup", "shipping"])
-  deliveryMethod: string;
-
   @IsString()
-  @IsOptional()
-  deliveryAddress?: string;
+  @IsNotEmpty()
+  deliveryAddress: string;
 
   @IsEnum(["gcash", "maya", "card", "bank_transfer", "otc_cash"])
   paymentMethod: string;
@@ -23,6 +20,11 @@ export class CreateOrderDto {
   @IsString()
   @IsOptional()
   buyerNotes?: string;
+}
+
+export class PayOrderDto {
+  @IsEnum(["gcash", "maya", "card", "bank_transfer", "otc_cash"])
+  paymentMethod: string;
 }
 
 export class UpdateOrderStatusDto {

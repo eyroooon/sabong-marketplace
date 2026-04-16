@@ -4,11 +4,14 @@ export function Footer() {
   return (
     <footer className="border-t border-border bg-secondary text-secondary-foreground">
       <div className="mx-auto max-w-7xl px-4 py-12">
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:gap-8 md:grid-cols-4">
           {/* Brand */}
           <div>
-            <h3 className="text-lg font-bold">
-              <span className="text-primary">Sabong</span>Market
+            <h3 className="flex items-center gap-1.5 text-lg font-bold">
+              <span className="text-primary">Bloodline</span>
+              <span className="rounded-md bg-gradient-to-br from-[#fbbf24] to-[#dc2626] px-1.5 py-0.5 text-xs font-black text-white">
+                PH
+              </span>
             </h3>
             <p className="mt-2 text-sm text-gray-400">
               The #1 trusted online marketplace for gamefowl in the Philippines.
@@ -49,7 +52,7 @@ export function Footer() {
         </div>
 
         <div className="mt-8 border-t border-gray-700 pt-8 text-center text-sm text-gray-400">
-          &copy; {new Date().getFullYear()} SabongMarket. All rights reserved.
+          &copy; {new Date().getFullYear()} BloodlinePH. All rights reserved.
         </div>
       </div>
     </footer>

@@ -2,17 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { apiPost } from "@/lib/api";
+import { apiPost, scheduleTokenRefresh } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setAuth } = useAuth();
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const resetSuccess = searchParams.get("reset") === "success";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,13 +26,15 @@ export default function LoginPage() {
         ? phone
         : `+63${phone.replace(/^0/, "")}`;
 
-      const res = await apiPost("/auth/login", {
+      const res = await apiPost<{ user: any; accessToken: string; refreshToken: string }>("/auth/login", {
         phone: formattedPhone,
         password,
       });
 
       setAuth(res.user, res.accessToken, res.refreshToken);
-      router.push("/");
+      scheduleTokenRefresh();
+      const redirect = searchParams.get("redirect") || "/dashboard";
+      router.push(redirect);
     } catch (err: any) {
       setError(err.message || "Login failed");
     } finally {
@@ -41,13 +45,22 @@ export default function LoginPage() {
   return (
     <div className="rounded-xl border border-border bg-card p-8 shadow-sm">
       <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold">
-          <span className="text-primary">Sabong</span>Market
+        <h1 className="flex items-center justify-center gap-1.5 text-2xl font-bold">
+          <span className="text-primary">Bloodline</span>
+          <span className="rounded-md bg-gradient-to-br from-[#fbbf24] to-[#dc2626] px-1.5 py-0.5 text-lg font-black text-white">
+            PH
+          </span>
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Sign in to your account
         </p>
       </div>
+
+      {resetSuccess && !error && (
+        <div className="mb-4 rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-700 dark:text-emerald-400">
+          Password reset successful. Please sign in with your new password.
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
@@ -76,7 +89,15 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <label className="mb-1.5 block text-sm font-medium">Password</label>
+          <div className="mb-1.5 flex items-center justify-between">
+            <label className="block text-sm font-medium">Password</label>
+            <Link
+              href="/forgot-password"
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <input
             type="password"
             value={password}

@@ -6,16 +6,24 @@ import {
 } from "@nestjs/common";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { DRIZZLE } from "../../database/database.module";
-import { favorites, listings } from "../../database/schema";
+import { favorites, listings, sellerProfiles } from "../../database/schema";
+import { NotificationsService } from "../notifications/notifications.service";
 
 @Injectable()
 export class FavoritesService {
-  constructor(@Inject(DRIZZLE) private db: any) {}
+  constructor(
+    @Inject(DRIZZLE) private db: any,
+    private notificationsService: NotificationsService,
+  ) {}
 
   async add(userId: string, listingId: string) {
-    // Verify listing exists
+    // Verify listing exists and get seller info
     const [listing] = await this.db
-      .select({ id: listings.id })
+      .select({
+        id: listings.id,
+        title: listings.title,
+        sellerId: listings.sellerId,
+      })
       .from(listings)
       .where(eq(listings.id, listingId))
       .limit(1);
@@ -32,6 +40,25 @@ export class FavoritesService {
         .update(listings)
         .set({ favoriteCount: sql`${listings.favoriteCount} + 1` })
         .where(eq(listings.id, listingId));
+
+      // Notify the seller that someone favorited their listing
+      const [seller] = await this.db
+        .select({ userId: sellerProfiles.userId })
+        .from(sellerProfiles)
+        .where(eq(sellerProfiles.id, listing.sellerId))
+        .limit(1);
+
+      if (seller?.userId && seller.userId !== userId) {
+        this.notificationsService
+          .create({
+            userId: seller.userId,
+            type: "listing_favorited",
+            title: "Someone favorited your listing",
+            body: listing.title,
+            data: { listingId },
+          })
+          .catch(() => {}); // Fire and forget
+      }
 
       return { message: "Added to favorites" };
     } catch (err: any) {
