@@ -1,25 +1,103 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { formatPHP } from "@sabong/shared";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const API_HOST = API_URL.replace(/\/api\/?$/, "");
+
+function imageUrl(url: string): string {
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  return `${API_HOST}${url}`;
+}
 
 export default function ListingDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const { accessToken, isAuthenticated, user } = useAuth();
   const [listing, setListing] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [messageLoading, setMessageLoading] = useState(false);
 
   useEffect(() => {
     if (params.slug) {
-      apiGet(`/listings/${params.slug}`)
-        .then(setListing)
+      apiGet<any>(`/listings/${params.slug}`)
+        .then((data) => {
+          setListing(data);
+          // Check favorite status if authenticated
+          if (isAuthenticated() && data?.id) {
+            apiGet<any>(`/favorites/${data.id}/check`, accessToken!)
+              .then((res: any) => setIsFavorited(res.isFavorited))
+              .catch(() => {});
+          }
+        })
         .catch(() => setListing(null))
         .finally(() => setLoading(false));
     }
   }, [params.slug]);
+
+  async function handleFavoriteToggle() {
+    if (!isAuthenticated()) {
+      router.push(`/login?redirect=/listings/${params.slug}`);
+      return;
+    }
+    setFavoriteLoading(true);
+    try {
+      if (isFavorited) {
+        await apiDelete(`/favorites/${listing.id}`, accessToken!);
+        setIsFavorited(false);
+      } else {
+        await apiPost(`/favorites/${listing.id}`, {}, accessToken!);
+        setIsFavorited(true);
+      }
+    } catch (err: any) {
+      console.error("Favorite toggle failed:", err.message);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  }
+
+  async function handleMessageSeller() {
+    if (!isAuthenticated()) {
+      router.push(`/login?redirect=/listings/${params.slug}`);
+      return;
+    }
+    if (!listing?.seller) return;
+    setMessageLoading(true);
+    try {
+      await apiPost(
+        "/messages/conversations",
+        {
+          sellerId: listing.seller.userId || listing.seller.id,
+          listingId: listing.id,
+          message: `Hi, I'm interested in your listing: ${listing.title}`,
+        },
+        accessToken!,
+      );
+      router.push("/messages");
+    } catch (err: any) {
+      // If conversation already exists, just navigate to messages
+      router.push("/messages");
+    } finally {
+      setMessageLoading(false);
+    }
+  }
+
+  function handleBuyNow() {
+    if (!isAuthenticated()) {
+      router.push(`/login?redirect=/listings/${params.slug}`);
+      return;
+    }
+    router.push(`/orders/new?listing=${listing.id}`);
+  }
 
   if (loading) {
     return (
@@ -45,17 +123,18 @@ export default function ListingDetailPage() {
   }
 
   const images = listing.images || [];
+  const isOwnListing = user?.id === listing.seller?.userId || user?.id === listing.sellerId;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
-      <div className="grid gap-8 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         {/* Left: Images */}
         <div className="lg:col-span-2">
           {/* Main image */}
           <div className="aspect-[4/3] overflow-hidden rounded-xl bg-muted">
             {images[selectedImage]?.url ? (
               <img
-                src={images[selectedImage].url}
+                src={imageUrl(images[selectedImage].url)}
                 alt={listing.title}
                 className="h-full w-full object-cover"
               />
@@ -78,7 +157,7 @@ export default function ListingDetailPage() {
                   }`}
                 >
                   <img
-                    src={img.thumbnailUrl || img.url}
+                    src={imageUrl(img.thumbnailUrl || img.url)}
                     alt=""
                     className="h-full w-full object-cover"
                   />
@@ -90,7 +169,7 @@ export default function ListingDetailPage() {
           {/* Details */}
           <div className="mt-8">
             <h2 className="mb-4 text-lg font-bold">Details</h2>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {listing.breed && (
                 <div className="rounded-lg bg-muted p-3">
                   <p className="text-xs text-muted-foreground">Breed</p>
@@ -155,7 +234,7 @@ export default function ListingDetailPage() {
             {(listing.sireInfo || listing.damInfo) && (
               <div className="mt-6">
                 <h2 className="mb-2 text-lg font-bold">Lineage</h2>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {listing.sireInfo && (
                     <div className="rounded-lg bg-muted p-3">
                       <p className="text-xs text-muted-foreground">
@@ -180,7 +259,7 @@ export default function ListingDetailPage() {
 
         {/* Right: Price & Actions */}
         <div>
-          <div className="sticky top-20 space-y-4">
+          <div className="sticky top-20 lg:top-20 space-y-4">
             <div className="rounded-xl border border-border p-6">
               <p className="text-3xl font-bold text-primary">
                 {formatPHP(Number(listing.price))}
@@ -204,25 +283,51 @@ export default function ListingDetailPage() {
               </p>
 
               <div className="mt-6 space-y-3">
-                <button className="w-full rounded-lg bg-primary py-3 font-medium text-white hover:bg-primary/90">
-                  Buy Now
-                </button>
-                <button className="w-full rounded-lg border border-primary py-3 font-medium text-primary hover:bg-primary/5">
-                  Message Seller
-                </button>
-                <button className="w-full rounded-lg border border-input py-3 text-sm text-muted-foreground hover:bg-muted">
-                  Add to Favorites
+                {!isOwnListing && (
+                  <>
+                    <button
+                      onClick={handleBuyNow}
+                      className="w-full rounded-lg bg-primary py-3 font-medium text-white hover:bg-primary/90"
+                    >
+                      Buy Now
+                    </button>
+                    <button
+                      onClick={handleMessageSeller}
+                      disabled={messageLoading}
+                      className="w-full rounded-lg border border-primary py-3 font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+                    >
+                      {messageLoading ? "Opening chat..." : "Message Seller"}
+                    </button>
+                  </>
+                )}
+                {isOwnListing && (
+                  <Link
+                    href={`/sell/${listing.id}/edit`}
+                    className="block w-full rounded-lg bg-primary py-3 text-center font-medium text-white hover:bg-primary/90"
+                  >
+                    Edit Listing
+                  </Link>
+                )}
+                <button
+                  onClick={handleFavoriteToggle}
+                  disabled={favoriteLoading}
+                  className={`w-full rounded-lg border py-3 text-sm font-medium transition-colors disabled:opacity-50 ${
+                    isFavorited
+                      ? "border-red-300 bg-red-50 text-red-600 hover:bg-red-100"
+                      : "border-input text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {favoriteLoading
+                    ? "..."
+                    : isFavorited
+                      ? "♥ Saved to Favorites"
+                      : "♡ Add to Favorites"}
                 </button>
               </div>
 
               {/* Shipping */}
               <div className="mt-6 border-t border-border pt-4 text-sm">
-                <p className="font-medium">Delivery Options</p>
-                {listing.meetupAvailable && (
-                  <p className="mt-1 text-muted-foreground">
-                    Meetup available
-                  </p>
-                )}
+                <p className="font-medium">Shipping</p>
                 {listing.shippingAvailable && (
                   <p className="mt-1 text-muted-foreground">
                     Shipping:{" "}

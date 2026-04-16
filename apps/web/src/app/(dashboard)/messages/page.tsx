@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
 import { apiGet, apiPost, apiPatch } from "@/lib/api";
+import { getSocket } from "@/lib/socket";
 
 export default function MessagesPage() {
   const { user, accessToken } = useAuth();
@@ -16,9 +17,80 @@ export default function MessagesPage() {
   const [showConvList, setShowConvList] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const selectedConvRef = useRef<any>(null);
+  selectedConvRef.current = selectedConv;
+
   useEffect(() => {
     fetchConversations();
-  }, []);
+
+    // Fallback poll every 60 seconds in case WebSocket disconnects
+    const convInterval = setInterval(() => {
+      if (accessToken) {
+        apiGet("/messages/conversations", accessToken)
+          .then((res: any) => setConversations(res.data || []))
+          .catch(() => {});
+      }
+    }, 60000);
+
+    return () => clearInterval(convInterval);
+  }, [accessToken]);
+
+  // WebSocket: listen for real-time events
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleNewMessage = (message: any) => {
+      // Only append if the message is for the currently selected conversation
+      if (selectedConvRef.current?.id === message.conversationId) {
+        setMessages((prev) => {
+          // Avoid duplicates (from own send or race conditions)
+          if (prev.some((m) => m.id === message.id)) return prev;
+          return [...prev, message];
+        });
+      }
+    };
+
+    const handleConversationUpdated = () => {
+      // Refresh conversation list when any conversation is updated
+      if (accessToken) {
+        apiGet("/messages/conversations", accessToken)
+          .then((res: any) => setConversations(res.data || []))
+          .catch(() => {});
+      }
+    };
+
+    const handleNewConversation = () => {
+      // Refresh conversation list when a new conversation is created
+      if (accessToken) {
+        apiGet("/messages/conversations", accessToken)
+          .then((res: any) => setConversations(res.data || []))
+          .catch(() => {});
+      }
+    };
+
+    socket.on("newMessage", handleNewMessage);
+    socket.on("conversationUpdated", handleConversationUpdated);
+    socket.on("newConversation", handleNewConversation);
+
+    return () => {
+      socket.off("newMessage", handleNewMessage);
+      socket.off("conversationUpdated", handleConversationUpdated);
+      socket.off("newConversation", handleNewConversation);
+    };
+  }, [accessToken]);
+
+  // WebSocket: join/leave conversation rooms
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket || !selectedConv) return;
+
+    socket.emit("joinConversation", selectedConv.id);
+
+    return () => {
+      socket.emit("leaveConversation", selectedConv.id);
+    };
+  }, [selectedConv?.id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -27,7 +99,7 @@ export default function MessagesPage() {
   async function fetchConversations() {
     if (!accessToken) return;
     try {
-      const res = await apiGet("/messages/conversations", accessToken);
+      const res = await apiGet<any>("/messages/conversations", accessToken);
       setConversations(res.data || []);
     } catch {
       setConversations([]);
@@ -41,7 +113,7 @@ export default function MessagesPage() {
     setShowConvList(false);
     setMessagesLoading(true);
     try {
-      const res = await apiGet(`/messages/conversations/${conv.id}`, accessToken!);
+      const res = await apiGet<any>(`/messages/conversations/${conv.id}`, accessToken!);
       setMessages(res.data || []);
       // Mark as read
       if (conv.unreadCount > 0) {
@@ -85,7 +157,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-10rem)] flex-col">
+    <div className="flex h-[calc(100vh-14rem)] sm:h-[calc(100vh-10rem)] flex-col pb-16 sm:pb-0">
       <h1 className="mb-4 text-2xl font-bold md:mb-6">Messages</h1>
 
       <div className="flex flex-1 overflow-hidden rounded-xl border border-border">
@@ -254,7 +326,7 @@ export default function MessagesPage() {
               </div>
 
               {/* Message Input */}
-              <form onSubmit={sendMessage} className="border-t border-border p-4">
+              <form onSubmit={sendMessage} className="border-t border-border p-4 mb-14 sm:mb-0">
                 <div className="flex gap-2">
                   <input
                     type="text"

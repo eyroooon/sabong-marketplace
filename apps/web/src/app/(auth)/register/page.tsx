@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { apiPost } from "@/lib/api";
+import { apiPost, scheduleTokenRefresh } from "@/lib/api";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setAuth } = useAuth();
   const [form, setForm] = useState({
     phone: "",
@@ -39,7 +40,7 @@ export default function RegisterPage() {
         ? form.phone
         : `+63${form.phone.replace(/^0/, "")}`;
 
-      const res = await apiPost("/auth/register", {
+      const res = await apiPost<{ user: any; accessToken: string; refreshToken: string }>("/auth/register", {
         phone: formattedPhone,
         firstName: form.firstName,
         lastName: form.lastName,
@@ -47,7 +48,9 @@ export default function RegisterPage() {
       });
 
       setAuth(res.user, res.accessToken, res.refreshToken);
-      router.push("/");
+      scheduleTokenRefresh();
+      const redirect = searchParams.get("redirect") || "/dashboard";
+      router.push(redirect);
     } catch (err: any) {
       setError(err.message || "Registration failed");
     } finally {
@@ -58,8 +61,11 @@ export default function RegisterPage() {
   return (
     <div className="rounded-xl border border-border bg-card p-8 shadow-sm">
       <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold">
-          <span className="text-primary">Sabong</span>Market
+        <h1 className="flex items-center justify-center gap-1.5 text-2xl font-bold">
+          <span className="text-primary">Bloodline</span>
+          <span className="rounded-md bg-gradient-to-br from-[#fbbf24] to-[#dc2626] px-1.5 py-0.5 text-lg font-black text-white">
+            PH
+          </span>
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Create your account
@@ -73,7 +79,7 @@ export default function RegisterPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="mb-1.5 block text-sm font-medium">
               First Name

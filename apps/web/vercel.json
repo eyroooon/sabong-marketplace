@@ -1,0 +1,7 @@
+{
+  "buildCommand": "cd ../.. && pnpm install && pnpm --filter @sabong/shared build && pnpm --filter @sabong/web build",
+  "installCommand": "echo 'Skipping default install'",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "regions": ["sin1"]
+}

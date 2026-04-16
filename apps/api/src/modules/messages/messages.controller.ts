@@ -15,6 +15,7 @@ import {
 } from "./dto/send-message.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { SanitizePipe } from "../../common/pipes/sanitize.pipe";
 
 @Controller("messages")
 @UseGuards(JwtAuthGuard)
@@ -39,7 +40,7 @@ export class MessagesController {
   @Post("conversations")
   startConversation(
     @CurrentUser("id") userId: string,
-    @Body() dto: StartConversationDto,
+    @Body(new SanitizePipe()) dto: StartConversationDto,
   ) {
     return this.messagesService.startConversation(
       userId,
@@ -53,7 +54,7 @@ export class MessagesController {
   sendMessage(
     @Param("id") id: string,
     @CurrentUser("id") userId: string,
-    @Body() dto: SendMessageDto,
+    @Body(new SanitizePipe()) dto: SendMessageDto,
   ) {
     return this.messagesService.sendMessage(
       id,

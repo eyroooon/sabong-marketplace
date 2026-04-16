@@ -8,3 +8,5 @@ export * from "./favorites";
 export * from "./notifications";
 export * from "./categories";
 export * from "./reports";
+export * from "./videos";
+export * from "./otp-codes";

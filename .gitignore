@@ -37,3 +37,6 @@ coverage/
 
 # misc
 *.tsbuildinfo
+
+# user uploads (should be on S3/R2 in production)
+apps/api/uploads/

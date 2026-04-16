@@ -35,7 +35,7 @@ export const createListingSchema = z.object({
   shippingAvailable: z.boolean().default(false),
   shippingAreas: z.enum(shippingAreas).default("local"),
   shippingFee: z.number().min(0).optional(),
-  meetupAvailable: z.boolean().default(true),
+  shippingRequired: z.boolean().default(true),
 });
 
 export const updateListingSchema = createListingSchema.partial();

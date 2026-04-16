@@ -82,6 +82,4 @@ export class CreateListingDto {
   @IsNumber() @IsOptional() @Min(0)
   shippingFee?: number;
 
-  @IsBoolean() @IsOptional()
-  meetupAvailable?: boolean;
 }

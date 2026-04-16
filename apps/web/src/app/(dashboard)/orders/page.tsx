@@ -31,7 +31,7 @@ export default function OrdersPage() {
     if (!accessToken) return;
     setLoading(true);
     try {
-      const res = await apiGet(`/orders?role=${tab === "buying" ? "buyer" : "seller"}`, accessToken);
+      const res = await apiGet<any>(`/orders?role=${tab === "buying" ? "buyer" : "seller"}`, accessToken);
       setOrders(res.data || []);
     } catch {
       setOrders([]);
@@ -89,9 +89,9 @@ export default function OrdersPage() {
                 href={`/orders/${order.id}`}
                 className="block rounded-xl border border-border p-4 transition-colors hover:bg-muted/50"
               >
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-semibold">{order.listingTitle || "Order"}</p>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">{order.listingTitle || "Order"}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       Order #{order.id.slice(0, 8)}
                     </p>
@@ -103,12 +103,12 @@ export default function OrdersPage() {
                       })}
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="flex items-center justify-between sm:block sm:text-right">
                     <span className={`inline-block rounded-full px-3 py-1 text-xs font-medium ${status.color}`}>
                       {status.label}
                     </span>
-                    <p className="mt-2 text-lg font-bold">
-                      {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(order.totalAmount / 100)}
+                    <p className="text-lg font-bold sm:mt-2">
+                      {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" }).format(Number(order.totalAmount))}
                     </p>
                   </div>
                 </div>
