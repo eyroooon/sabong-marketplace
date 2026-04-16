@@ -3,7 +3,11 @@
  * Mirrors apps/web/src/lib/api.ts — adds Authorization header, auto-refreshes
  * on 401 with refresh token, throws typed errors.
  */
-import * as SecureStore from "expo-secure-store";
+import {
+  deleteSecureItem,
+  getSecureItem,
+  setSecureItem,
+} from "./secure-storage";
 
 const API_BASE =
   process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001/api";
@@ -20,23 +24,23 @@ export class ApiError extends Error {
 
 export async function setTokens(access: string | null, refresh: string | null) {
   if (access) {
-    await SecureStore.setItemAsync(ACCESS_KEY, access);
+    await setSecureItem(ACCESS_KEY, access);
   } else {
-    await SecureStore.deleteItemAsync(ACCESS_KEY);
+    await deleteSecureItem(ACCESS_KEY);
   }
   if (refresh) {
-    await SecureStore.setItemAsync(REFRESH_KEY, refresh);
+    await setSecureItem(REFRESH_KEY, refresh);
   } else {
-    await SecureStore.deleteItemAsync(REFRESH_KEY);
+    await deleteSecureItem(REFRESH_KEY);
   }
 }
 
 export async function getAccessToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(ACCESS_KEY);
+  return getSecureItem(ACCESS_KEY);
 }
 
 export async function getRefreshToken(): Promise<string | null> {
-  return SecureStore.getItemAsync(REFRESH_KEY);
+  return getSecureItem(REFRESH_KEY);
 }
 
 async function refreshAccessToken(): Promise<string | null> {

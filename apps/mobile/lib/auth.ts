@@ -1,9 +1,13 @@
 /**
- * Auth store — zustand + expo-secure-store for token persistence.
+ * Auth store — zustand + cross-platform secure storage for token persistence.
  * Matches the shape used by the web app's auth.ts.
  */
 import { create } from "zustand";
-import * as SecureStore from "expo-secure-store";
+import {
+  deleteSecureItem,
+  getSecureItem,
+  setSecureItem,
+} from "./secure-storage";
 import { setTokens, apiPost } from "./api";
 
 export interface AuthUser {
@@ -55,9 +59,9 @@ export const useAuth = create<AuthState>((set) => ({
   async hydrate() {
     try {
       const [rawUser, access, refresh] = await Promise.all([
-        SecureStore.getItemAsync(USER_KEY),
-        SecureStore.getItemAsync("access_token"),
-        SecureStore.getItemAsync("refresh_token"),
+        getSecureItem(USER_KEY),
+        getSecureItem("access_token"),
+        getSecureItem("refresh_token"),
       ]);
       if (rawUser && access) {
         set({
@@ -75,7 +79,7 @@ export const useAuth = create<AuthState>((set) => ({
 
   async setAuth(user, accessToken, refreshToken) {
     await Promise.all([
-      SecureStore.setItemAsync(USER_KEY, JSON.stringify(user)),
+      setSecureItem(USER_KEY, JSON.stringify(user)),
       setTokens(accessToken, refreshToken),
     ]);
     set({ user, accessToken, refreshToken, isLoading: false });
@@ -98,10 +102,7 @@ export const useAuth = create<AuthState>((set) => ({
   },
 
   async logout() {
-    await Promise.all([
-      SecureStore.deleteItemAsync(USER_KEY),
-      setTokens(null, null),
-    ]);
+    await Promise.all([deleteSecureItem(USER_KEY), setTokens(null, null)]);
     set({ user: null, accessToken: null, refreshToken: null });
   },
 }));
