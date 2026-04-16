@@ -1,12 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { apiPost, scheduleTokenRefresh } from "@/lib/api";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginFallback() {
+  return (
+    <div className="rounded-xl border border-border bg-card p-8 shadow-sm">
+      <div className="animate-pulse space-y-4">
+        <div className="mx-auto h-8 w-40 rounded bg-muted" />
+        <div className="h-4 w-56 mx-auto rounded bg-muted" />
+        <div className="h-10 rounded bg-muted" />
+        <div className="h-10 rounded bg-muted" />
+        <div className="h-10 rounded bg-muted" />
+      </div>
+    </div>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setAuth } = useAuth();

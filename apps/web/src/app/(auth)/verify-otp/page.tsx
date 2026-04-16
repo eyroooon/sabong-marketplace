@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiPost } from "@/lib/api";
@@ -9,6 +9,27 @@ const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SEC = 60;
 
 export default function VerifyOtpPage() {
+  return (
+    <Suspense fallback={<VerifyOtpFallback />}>
+      <VerifyOtpForm />
+    </Suspense>
+  );
+}
+
+function VerifyOtpFallback() {
+  return (
+    <div className="rounded-xl border border-border bg-card p-8 shadow-sm">
+      <div className="animate-pulse space-y-4">
+        <div className="mx-auto h-8 w-40 rounded bg-muted" />
+        <div className="h-4 w-56 mx-auto rounded bg-muted" />
+        <div className="h-12 rounded bg-muted" />
+        <div className="h-10 rounded bg-muted" />
+      </div>
+    </div>
+  );
+}
+
+function VerifyOtpForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const phone = searchParams.get("phone") || "";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiGet, apiPost } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -14,6 +14,27 @@ const PAYMENT_METHODS = [
 ];
 
 export default function CreateOrderPage() {
+  return (
+    <Suspense fallback={<CreateOrderFallback />}>
+      <CreateOrderContent />
+    </Suspense>
+  );
+}
+
+function CreateOrderFallback() {
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 w-40 rounded bg-muted" />
+        <div className="h-32 rounded bg-muted" />
+        <div className="h-24 rounded bg-muted" />
+        <div className="h-10 rounded bg-muted" />
+      </div>
+    </div>
+  );
+}
+
+function CreateOrderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { accessToken } = useAuth();
