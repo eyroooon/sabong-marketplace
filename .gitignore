@@ -40,3 +40,9 @@ coverage/
 
 # user uploads (should be on S3/R2 in production)
 apps/api/uploads/
+
+# test artifacts
+coverage/
+playwright-report/
+test-results/
+.playwright/

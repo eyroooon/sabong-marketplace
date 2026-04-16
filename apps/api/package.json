@@ -8,6 +8,8 @@
     "start": "node dist/main",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "type-check": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/database/seed/index.ts"
@@ -48,8 +50,10 @@
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
+    "@nestjs/testing": "^11.1.19",
     "@types/bcrypt": "^5.0.2",
     "@types/express": "^5.0.0",
+    "@types/jest": "^30.0.0",
     "@types/multer": "^2.1.0",
     "@types/node": "^22.0.0",
     "@types/passport-jwt": "^4.0.1",
@@ -57,6 +61,8 @@
     "@types/sanitize-html": "^2.16.1",
     "@types/uuid": "^11.0.0",
     "drizzle-kit": "^0.30.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.9",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
