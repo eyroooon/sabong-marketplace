@@ -21,6 +21,7 @@ import {
   formatPeso,
   useListingBySlug,
 } from "@/lib/listings";
+import { useStartConversation } from "@/lib/messages";
 import {
   colors,
   fontSize,
@@ -36,8 +37,9 @@ const { width: SCREEN_W } = Dimensions.get("window");
 export default function ListingDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const router = useRouter();
-  const { user } = useAuth();
+  const user = useAuth((s) => s.user);
   const { data, isLoading, error } = useListingBySlug(slug);
+  const startConversation = useStartConversation();
   const [imageIndex, setImageIndex] = useState(0);
   const galleryRef = useRef<FlatList>(null);
 
@@ -68,41 +70,50 @@ export default function ListingDetailScreen() {
   const primary = images.find((i) => i.isPrimary) ?? images[0];
   const galleryImages = images.length > 0 ? images : primary ? [primary] : [];
 
+  const requireSignIn = (action: string): boolean => {
+    if (user) return false;
+    Alert.alert("Sign in required", `Mag-login para ${action}.`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Sign in", onPress: () => router.push("/login") },
+    ]);
+    return true;
+  };
+
   const handleContactSeller = () => {
-    if (!user) {
+    if (requireSignIn("makausap ang seller")) return;
+    if (!data || !data.seller) return;
+    if (data.seller.userId === user!.id) {
       Alert.alert(
-        "Sign in required",
-        "Mag-login para makausap ang seller.",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Sign in", onPress: () => router.push("/login") },
-        ],
+        "That's your listing",
+        "Hindi mo kailangan kausapin ang sarili mo.",
       );
       return;
     }
-    // Full messaging flow lands in Phase 3
-    Alert.alert(
-      "Messaging coming soon",
-      "Real-time chat with sellers lands in the next phase.",
+    startConversation.mutate(
+      {
+        sellerId: data.seller.userId,
+        listingId: data.id,
+        message: `Hi! Interesado ako sa "${data.title}".`,
+      },
+      {
+        onSuccess: (res) => router.push(`/chat/${res.conversationId}`),
+        onError: (err) =>
+          Alert.alert("Could not start chat", err.message),
+      },
     );
   };
 
   const handleBuyNow = () => {
-    if (!user) {
+    if (requireSignIn("bumili")) return;
+    if (!data) return;
+    if (data.seller?.userId === user!.id) {
       Alert.alert(
-        "Sign in required",
-        "Mag-login para bumili.",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Sign in", onPress: () => router.push("/login") },
-        ],
+        "That's your listing",
+        "Hindi ka pwede bumili ng sarili mong listing.",
       );
       return;
     }
-    Alert.alert(
-      "Order flow coming soon",
-      "Checkout + escrow payment lands in the next phase.",
-    );
+    router.push({ pathname: "/order/new", params: { slug: data.slug } });
   };
 
   return (

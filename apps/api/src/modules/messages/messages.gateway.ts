@@ -11,7 +11,20 @@ import { ConfigService } from "@nestjs/config";
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.WEB_URL || "http://localhost:3000",
+    origin: (
+      origin: string | undefined,
+      cb: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!origin) return cb(null, true);
+      const ok =
+        origin === "http://localhost:3000" ||
+        origin === "http://localhost:8081" ||
+        origin === "http://localhost:8082" ||
+        /^http:\/\/192\.168\.\d+\.\d+:\d+$/.test(origin) ||
+        /^exp:\/\/.+$/.test(origin) ||
+        origin === process.env.WEB_URL;
+      cb(null, ok);
+    },
     credentials: true,
   },
   namespace: "/chat",

@@ -1,11 +1,11 @@
 import React from "react";
-import { StyleSheet, Text, View, Alert } from "react-native";
+import { StyleSheet, Text, View, Alert, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/lib/auth";
-import { colors, fontSize, fontWeight, radii, spacing } from "@/lib/theme";
+import { colors, fontSize, fontWeight, radii } from "@/lib/theme";
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -62,10 +62,31 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.menu}>
-          <MenuItem icon="settings-outline" label="Settings" onPress={() => {}} />
-          <MenuItem icon="heart-outline" label="Favorites" onPress={() => {}} />
-          <MenuItem icon="cube-outline" label="My Orders" onPress={() => {}} />
-          <MenuItem icon="storefront-outline" label="Sell" onPress={() => {}} />
+          <MenuItem
+            icon="cube-outline"
+            label="My Orders"
+            onPress={() => router.push("/orders")}
+          />
+          <MenuItem
+            icon="chatbubbles-outline"
+            label="Messages"
+            onPress={() => router.push("/messages")}
+          />
+          <MenuItem
+            icon="heart-outline"
+            label="Favorites"
+            onPress={() =>
+              Alert.alert("Coming soon", "Favorites sync in next phase.")
+            }
+          />
+          <MenuItem
+            icon="settings-outline"
+            label="Settings"
+            onPress={() =>
+              Alert.alert("Coming soon", "Settings screen in next phase.")
+            }
+            isLast
+          />
         </View>
 
         <Button
@@ -93,17 +114,26 @@ function MenuItem({
   icon,
   label,
   onPress,
+  isLast,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   onPress: () => void;
+  isLast?: boolean;
 }) {
   return (
-    <View style={styles.menuItem}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.menuItem,
+        isLast && { borderBottomWidth: 0 },
+        pressed && { backgroundColor: colors.mutedBg },
+      ]}
+    >
       <Ionicons name={icon} size={20} color={colors.muted} />
       <Text style={styles.menuLabel}>{label}</Text>
       <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-    </View>
+    </Pressable>
   );
 }
 

@@ -38,6 +38,25 @@ export default function RootLayout() {
               name="listing/[slug]"
               options={{ animation: "slide_from_right" }}
             />
+            <Stack.Screen
+              name="chat/[id]"
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="order/new"
+              options={{
+                animation: "slide_from_bottom",
+                presentation: "modal",
+              }}
+            />
+            <Stack.Screen
+              name="order/[id]"
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="orders"
+              options={{ animation: "slide_from_right" }}
+            />
           </Stack>
         </QueryClientProvider>
       </SafeAreaProvider>
