@@ -24,8 +24,7 @@
   },
   "pnpm": {
     "overrides": {
-      "@expo/metro-runtime": "~4.0.1",
-      "@expo/log-box": "~4.0.0"
+      "pretty-format": "^29.7.0"
     }
   }
 }

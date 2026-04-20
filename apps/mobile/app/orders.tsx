@@ -2,6 +2,8 @@ import React from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Image,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -16,6 +18,7 @@ import {
   formatOrderPrice,
   ORDER_STATUS_LABELS,
   type Order,
+  type OrderStatus,
 } from "@/lib/orders";
 import { Button } from "@/components/ui/Button";
 import {
@@ -53,12 +56,12 @@ export default function OrdersScreen() {
           />
         }
         renderItem={({ item }) => (
-          <OrderRow
+          <OrderCard
             order={item}
             onPress={() => router.push(`/order/${item.id}`)}
           />
         )}
-        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         ListEmptyComponent={
           isLoading ? (
             <View style={styles.centerBlock}>
@@ -89,7 +92,7 @@ export default function OrdersScreen() {
   );
 }
 
-function OrderRow({
+function OrderCard({
   order,
   onPress,
 }: {
@@ -97,32 +100,85 @@ function OrderRow({
   onPress: () => void;
 }) {
   const statusColor = getStatusColor(order.status);
+  const title = order.listing?.title || "Listing";
+  const breed = order.listing?.breed
+    ? `${order.listing.breed}${order.listing.bloodline ? ` · ${order.listing.bloodline}` : ""}`
+    : null;
+
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
+      style={({ pressed }) => [
+        styles.card,
+        pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+      ]}
     >
-      <View style={styles.rowTop}>
-        <Text style={styles.orderNumber}>{order.orderNumber}</Text>
+      {/* Top row — image + title + status pill */}
+      <View style={styles.topRow}>
+        <View style={styles.imageWrap}>
+          {order.listingImage ? (
+            <Image
+              source={{ uri: order.listingImage }}
+              style={styles.image}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Ionicons name="image-outline" size={24} color={colors.muted} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.info}>
+          <Text style={styles.listingTitle} numberOfLines={2}>
+            {title}
+          </Text>
+          {breed ? (
+            <Text style={styles.breedText} numberOfLines={1}>
+              {breed}
+            </Text>
+          ) : null}
+          <Text style={styles.orderNum}>#{order.orderNumber}</Text>
+        </View>
+
         <View style={[styles.statusPill, { backgroundColor: statusColor }]}>
           <Text style={styles.statusText}>
             {ORDER_STATUS_LABELS[order.status]}
           </Text>
         </View>
       </View>
-      <View style={styles.rowBottom}>
-        <Text style={styles.date}>
-          {new Date(order.createdAt).toLocaleDateString()}
-        </Text>
-        <Text style={styles.total}>
-          {formatOrderPrice(order.totalAmount)}
-        </Text>
+
+      {/* Divider */}
+      <View style={styles.divider} />
+
+      {/* Bottom row — date + total + CTA */}
+      <View style={styles.bottomRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.dateLabel}>Placed</Text>
+          <Text style={styles.dateValue}>
+            {new Date(order.createdAt).toLocaleDateString("en-PH", {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            })}
+          </Text>
+        </View>
+        <View style={{ alignItems: "flex-end", flex: 1 }}>
+          <Text style={styles.dateLabel}>Total</Text>
+          <Text style={styles.total}>{formatOrderPrice(order.totalAmount)}</Text>
+        </View>
+        <Ionicons
+          name="chevron-forward"
+          size={18}
+          color={colors.muted}
+          style={{ marginLeft: 6 }}
+        />
       </View>
     </Pressable>
   );
 }
 
-function getStatusColor(status: string): string {
+function getStatusColor(status: OrderStatus): string {
   switch (status) {
     case "paid":
     case "confirmed":
@@ -166,28 +222,69 @@ const styles = StyleSheet.create({
     padding: spacing[3],
     flexGrow: 1,
   },
-  row: {
-    padding: spacing[4],
+  card: {
+    padding: spacing[3],
     backgroundColor: colors.white,
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOpacity: 0.04,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+      },
+      android: { elevation: 1 },
+    }),
   },
-  rowTop: {
+  topRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    gap: 12,
+    alignItems: "flex-start",
   },
-  orderNumber: {
+  imageWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: radii.lg,
+    overflow: "hidden",
+    backgroundColor: colors.mutedBg,
+  },
+  image: {
+    width: "100%",
+    height: "100%",
+  },
+  imagePlaceholder: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  info: {
+    flex: 1,
+    gap: 3,
+  },
+  listingTitle: {
     fontSize: fontSize.base,
     fontWeight: fontWeight.bold,
     color: colors.foreground,
+    lineHeight: 19,
+  },
+  breedText: {
+    fontSize: fontSize.xs,
+    color: colors.muted,
+  },
+  orderNum: {
+    fontSize: 11,
+    color: colors.muted,
+    fontWeight: fontWeight.semibold,
+    marginTop: 2,
   },
   statusPill: {
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: radii.full,
+    alignSelf: "flex-start",
   },
   statusText: {
     fontSize: 10,
@@ -196,19 +293,34 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     textTransform: "uppercase",
   },
-  rowBottom: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: spacing[3],
+    marginHorizontal: -spacing[3],
   },
-  date: {
-    fontSize: fontSize.xs,
+  bottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  dateLabel: {
+    fontSize: 10,
     color: colors.muted,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.3,
+    textTransform: "uppercase",
+  },
+  dateValue: {
+    fontSize: fontSize.sm,
+    color: colors.foreground,
+    fontWeight: fontWeight.semibold,
+    marginTop: 2,
   },
   total: {
     fontSize: fontSize.lg,
     fontWeight: fontWeight.black,
     color: colors.primary,
+    marginTop: 2,
   },
   centerBlock: {
     flex: 1,

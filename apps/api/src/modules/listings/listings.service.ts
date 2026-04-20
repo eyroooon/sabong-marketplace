@@ -351,7 +351,48 @@ export class ListingsService {
       .orderBy(desc(listings.createdAt))
       .limit(12);
 
-    return { data };
+    // Enrich with primary images + seller info (same shape as browse()) so
+    // home-screen rails can render without a second round-trip.
+    const listingIds = data.map((l: any) => l.id);
+    let images: any[] = [];
+    if (listingIds.length > 0) {
+      images = await this.db
+        .select()
+        .from(listingImages)
+        .where(
+          and(
+            eq(listingImages.isPrimary, true),
+            sql`${listingImages.listingId} IN ${listingIds}`,
+          ),
+        );
+    }
+    const imageMap = new Map(images.map((img: any) => [img.listingId, img]));
+
+    const sellerIds = [...new Set(data.map((l: any) => l.sellerId))];
+    let sellerMap = new Map<string, any>();
+    if (sellerIds.length > 0) {
+      const sellers = await this.db
+        .select({
+          id: sellerProfiles.id,
+          farmName: sellerProfiles.farmName,
+          verificationStatus: sellerProfiles.verificationStatus,
+        })
+        .from(sellerProfiles)
+        .where(sql`${sellerProfiles.id} IN ${sellerIds}`);
+      sellerMap = new Map(sellers.map((s: any) => [s.id, s]));
+    }
+
+    const results = data.map((listing: any) => {
+      const seller = sellerMap.get(listing.sellerId);
+      return {
+        ...listing,
+        primaryImage: imageMap.get(listing.id)?.url || null,
+        sellerVerified: seller?.verificationStatus === "verified",
+        sellerName: seller?.farmName || null,
+      };
+    });
+
+    return { data: results };
   }
 
   async uploadImages(listingId: string, userId: string, files: Express.Multer.File[]) {

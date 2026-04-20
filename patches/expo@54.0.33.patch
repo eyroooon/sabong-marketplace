@@ -1,0 +1,13 @@
+diff --git a/src/async-require/hmr.ts b/src/async-require/hmr.ts
+index 0000001..0000002 100644
+--- a/src/async-require/hmr.ts
++++ b/src/async-require/hmr.ts
+@@ -26,7 +26,9 @@ function hideLoading() {
+ const pendingEntryPoints: string[] = [];
+ 
+ // @ts-expect-error: Account for multiple versions of pretty-format inside of a monorepo.
+-const prettyFormatFunc = typeof prettyFormat === 'function' ? prettyFormat : prettyFormat.default;
++const prettyFormatFunc = typeof prettyFormat === 'function' ? prettyFormat : (prettyFormat && typeof prettyFormat.default === 'function' ? prettyFormat.default : (msg: unknown) => String(msg));
+ 
+ type HMRClientType = {
+   send: (msg: string) => void;

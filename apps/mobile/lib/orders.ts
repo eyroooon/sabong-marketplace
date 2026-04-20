@@ -47,6 +47,30 @@ export interface Order {
   sellerNotes: string | null;
   createdAt: string;
   updatedAt: string;
+
+  // Enriched by the API (optional so old clients still work)
+  listing?: {
+    id: string;
+    title: string;
+    slug: string;
+    breed: string | null;
+    bloodline: string | null;
+  } | null;
+  listingImage?: string | null;
+  seller?: {
+    farmName: string | null;
+    avgRating: string | null;
+    verificationStatus: string | null;
+  } | null;
+
+  // Step timestamps for the tracker
+  paidAt?: string | null;
+  confirmedAt?: string | null;
+  shippedAt?: string | null;
+  deliveredAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
 }
 
 export interface CreateOrderInput {

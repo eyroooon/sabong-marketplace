@@ -76,6 +76,8 @@ export default function HomeScreen() {
               </Text>
             </LinearGradient>
 
+            {/* Subtitle below the gradient banner for emphasis */}
+
             <Text style={styles.heroSubtitle}>
               Walang hassle. Walang middleman. Verified breeders,
               escrow-protected payments, at real-time messaging — lahat nasa
@@ -304,18 +306,22 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
   },
   heroTitleGradient: {
-    marginTop: 4,
-    borderRadius: radii.sm,
+    marginTop: 8,
+    borderRadius: radii.lg,
+    paddingHorizontal: 20,
+    paddingVertical: 6,
+    alignSelf: "center",
   },
   heroTitleGradientText: {
-    fontSize: fontSize["4xl"],
+    fontSize: fontSize["3xl"],
     fontWeight: fontWeight.black,
-    color: "transparent",
+    color: colors.white,
     textAlign: "center",
-    lineHeight: 48,
-    letterSpacing: -1,
-    // Hack: mobile can't do true gradient text without extra libs.
-    // Here we show it in gold solid tone which is close to the flame gradient.
+    lineHeight: 40,
+    letterSpacing: -0.5,
+    // True gradient *text* on native needs masked-view + LinearGradient.
+    // For simplicity, we put the gradient on the background and use white
+    // text on top — feels like a premium highlighter badge.
   },
   heroSubtitle: {
     fontSize: fontSize.base,

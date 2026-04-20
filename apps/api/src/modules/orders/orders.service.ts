@@ -14,6 +14,7 @@ import {
   orders,
   payments,
   listings,
+  listingImages,
   sellerProfiles,
   users,
 } from "../../database/schema";
@@ -167,7 +168,41 @@ export class OrdersService {
       .where(condition)
       .orderBy(desc(orders.createdAt));
 
-    return { data };
+    // Enrich with listing title/breed and primary image so the orders list
+    // screen can render a proper card without a second round-trip per order.
+    if (data.length === 0) return { data: [] };
+
+    const listingIds = [...new Set(data.map((o: any) => o.listingId))];
+    const listingRows = await this.db
+      .select({
+        id: listings.id,
+        title: listings.title,
+        slug: listings.slug,
+        breed: listings.breed,
+        bloodline: listings.bloodline,
+      })
+      .from(listings)
+      .where(sql`${listings.id} IN ${listingIds}`);
+    const listingMap = new Map(listingRows.map((l: any) => [l.id, l]));
+
+    const imageRows = await this.db
+      .select()
+      .from(listingImages)
+      .where(
+        and(
+          eq(listingImages.isPrimary, true),
+          sql`${listingImages.listingId} IN ${listingIds}`,
+        ),
+      );
+    const imageMap = new Map(imageRows.map((i: any) => [i.listingId, i.url]));
+
+    const enriched = data.map((order: any) => ({
+      ...order,
+      listing: listingMap.get(order.listingId) || null,
+      listingImage: imageMap.get(order.listingId) || null,
+    }));
+
+    return { data: enriched };
   }
 
   async getById(orderId: string, userId: string) {
@@ -194,9 +229,27 @@ export class OrdersService {
 
     // Get listing, payment, buyer/seller info
     const [listing] = await this.db
-      .select({ id: listings.id, title: listings.title, slug: listings.slug })
+      .select({
+        id: listings.id,
+        title: listings.title,
+        slug: listings.slug,
+        breed: listings.breed,
+        bloodline: listings.bloodline,
+      })
       .from(listings)
       .where(eq(listings.id, order.listingId))
+      .limit(1);
+
+    // Primary image for the listing (for the hero/summary card in detail view)
+    const [primaryImage] = await this.db
+      .select()
+      .from(listingImages)
+      .where(
+        and(
+          eq(listingImages.listingId, order.listingId),
+          eq(listingImages.isPrimary, true),
+        ),
+      )
       .limit(1);
 
     const paymentRecords = await this.db
@@ -214,7 +267,14 @@ export class OrdersService {
       .where(eq(users.id, order.buyerId))
       .limit(1);
 
-    return { ...order, listing, payments: paymentRecords, buyer, seller: sellerProfile };
+    return {
+      ...order,
+      listing,
+      listingImage: primaryImage?.url || null,
+      payments: paymentRecords,
+      buyer,
+      seller: sellerProfile,
+    };
   }
 
   async payOrder(orderId: string, userId: string, paymentMethod: string) {

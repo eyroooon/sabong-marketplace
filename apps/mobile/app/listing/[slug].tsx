@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -11,6 +11,7 @@ import {
   View,
   Platform,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -32,8 +33,6 @@ import {
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/lib/auth";
 
-const { width: SCREEN_W } = Dimensions.get("window");
-
 export default function ListingDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const router = useRouter();
@@ -42,6 +41,14 @@ export default function ListingDetailScreen() {
   const startConversation = useStartConversation();
   const [imageIndex, setImageIndex] = useState(0);
   const galleryRef = useRef<FlatList>(null);
+  const { width: SCREEN_W } = useWindowDimensions();
+  const dynamicStyles = useMemo(
+    () => ({
+      gallery: { width: SCREEN_W, height: SCREEN_W },
+      galleryImage: { width: SCREEN_W, height: SCREEN_W },
+    }),
+    [SCREEN_W],
+  );
 
   if (isLoading) {
     return (
@@ -122,7 +129,7 @@ export default function ListingDetailScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Gallery */}
-        <View style={styles.gallery}>
+        <View style={[styles.gallery, dynamicStyles.gallery]}>
           {galleryImages.length > 0 ? (
             <FlatList
               ref={galleryRef}
@@ -140,13 +147,15 @@ export default function ListingDetailScreen() {
               renderItem={({ item }) => (
                 <Image
                   source={{ uri: item.url }}
-                  style={styles.galleryImage}
+                  style={dynamicStyles.galleryImage}
                   resizeMode="cover"
                 />
               )}
             />
           ) : (
-            <View style={styles.galleryPlaceholder}>
+            <View
+              style={[styles.galleryPlaceholder, dynamicStyles.galleryImage]}
+            >
               <Ionicons name="image-outline" size={64} color={colors.muted} />
             </View>
           )}
@@ -367,18 +376,10 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   gallery: {
-    width: SCREEN_W,
-    height: SCREEN_W,
     backgroundColor: colors.inkSoft,
     position: "relative",
   },
-  galleryImage: {
-    width: SCREEN_W,
-    height: SCREEN_W,
-  },
   galleryPlaceholder: {
-    width: SCREEN_W,
-    height: SCREEN_W,
     alignItems: "center",
     justifyContent: "center",
   },
