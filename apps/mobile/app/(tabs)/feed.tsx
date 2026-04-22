@@ -1,9 +1,12 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
   FlatList,
   Image,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -12,6 +15,8 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { Ionicons } from "@expo/vector-icons";
+import { useVideoPlayer, VideoView } from "expo-video";
+import { useRouter } from "expo-router";
 import {
   colors,
   fontSize,
@@ -19,145 +24,39 @@ import {
   radii,
   spacing,
 } from "@/lib/theme";
+import {
+  useVideoFeed,
+  useLikeVideo,
+  useShareVideo,
+  useFollowStatus,
+  useFollow,
+  formatVideoPrice,
+  type Video,
+} from "@/lib/videos";
+import { CommentSheet } from "@/components/feed/CommentSheet";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-/** Dummy feed data — replace with API call to /feed/posts once we wire up
- *  the real video feed module. Using Unsplash rooster photos for visuals
- *  and realistic caption/metadata so scrolling feels authentic. */
-interface FeedPost {
-  id: string;
-  imageUrl: string;
-  username: string;
-  handle: string;
-  farm: string;
-  verified: boolean;
-  caption: string;
-  hashtags: string[];
-  likes: number;
-  comments: number;
-  shares: number;
-  location: string;
-  hasListing?: {
-    title: string;
-    price: number;
-  };
-}
-
-const DUMMY_POSTS: FeedPost[] = [
-  {
-    id: "1",
-    imageUrl:
-      "https://images.unsplash.com/photo-1583510383754-35fc1d1eb598?w=1200&q=80",
-    username: "Mang Juan",
-    handle: "@juan_kelso_farm",
-    farm: "Juan Kelso Farm",
-    verified: true,
-    caption:
-      "Bagong keep! McLean Hatch bloodline, malakas ang kamao nito. Interested pm lang!",
-    hashtags: ["#Kelso", "#Hatch", "#Pampanga"],
-    likes: 2847,
-    comments: 184,
-    shares: 92,
-    location: "Angeles, Pampanga",
-    hasListing: {
-      title: "McLean Hatch Stag",
-      price: 25000,
-    },
-  },
-  {
-    id: "2",
-    imageUrl:
-      "https://images.unsplash.com/photo-1585670603060-f92c1e4f3d12?w=1200&q=80",
-    username: "Ate Marites",
-    handle: "@bacolod_sabungera",
-    farm: "Marites Gamefowl",
-    verified: false,
-    caption:
-      "Sunday pasilip sa mga manok ko. Sweater hen — champion bloodline from Negros.",
-    hashtags: ["#Sweater", "#Negros", "#Hen", "#ChampionBlood"],
-    likes: 1203,
-    comments: 67,
-    shares: 34,
-    location: "Bacolod City, Negros",
-  },
-  {
-    id: "3",
-    imageUrl:
-      "https://images.unsplash.com/photo-1471623817296-aa07ae5c9f47?w=1200&q=80",
-    username: "Tatay Dong",
-    handle: "@roundhead_master",
-    farm: "Dong Roundhead PH",
-    verified: true,
-    caption:
-      "Pure Roundhead, 7 months. Ready to fight. PM for price. Local and nationwide shipping available.",
-    hashtags: ["#Roundhead", "#Pure", "#Cavite"],
-    likes: 4521,
-    comments: 312,
-    shares: 178,
-    location: "Silang, Cavite",
-    hasListing: {
-      title: "Pure Roundhead Stag - 7 months",
-      price: 18000,
-    },
-  },
-  {
-    id: "4",
-    imageUrl:
-      "https://images.unsplash.com/photo-1622997882237-e24385e6ab4a?w=1200&q=80",
-    username: "Lito Breeder",
-    handle: "@lito_breeder_ph",
-    farm: "Lito's Breeding Station",
-    verified: true,
-    caption:
-      "Kelso pullet, ready for breeding. Sired by 2x Bakbakan champion. Limited stocks na lang!",
-    hashtags: ["#Kelso", "#Pullet", "#Breeding", "#Batangas"],
-    likes: 892,
-    comments: 45,
-    shares: 21,
-    location: "Lipa City, Batangas",
-  },
-  {
-    id: "5",
-    imageUrl:
-      "https://images.unsplash.com/photo-1545251765-6aad90d25972?w=1200&q=80",
-    username: "Boss Rommel",
-    handle: "@aseel_king_ph",
-    farm: "Aseel King Philippines",
-    verified: true,
-    caption:
-      "Aseel brood hens. 5 hens pack deal. Deep heritage bloodline, imported from Pakistan 3 generations ago.",
-    hashtags: ["#Aseel", "#Imported", "#BreedingStock"],
-    likes: 3210,
-    comments: 256,
-    shares: 145,
-    location: "Cebu City",
-    hasListing: {
-      title: "Aseel Brood Stock - 5 Hens",
-      price: 45000,
-    },
-  },
-  {
-    id: "6",
-    imageUrl:
-      "https://images.unsplash.com/photo-1709751797406-7e657b0a3897?w=1200&q=80",
-    username: "Tita Bella",
-    handle: "@bella_farmstead",
-    farm: "Bella Farmstead",
-    verified: false,
-    caption:
-      "Grey Kelso stag — show quality. Perfect for exhibition. Let me know if interested 🐓",
-    hashtags: ["#GreyKelso", "#Show", "#ExhibitionQuality"],
-    likes: 1587,
-    comments: 94,
-    shares: 56,
-    location: "Davao City",
-  },
-];
+type FeedTab = "foryou" | "marketplace";
 
 export default function FeedScreen() {
+  const [tab, setTab] = useState<FeedTab>("foryou");
   const [activeIndex, setActiveIndex] = useState(0);
-  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
+  const [commentsOpenFor, setCommentsOpenFor] = useState<string | null>(null);
+
+  const {
+    data,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useVideoFeed(tab === "marketplace" ? "marketplace" : undefined);
+
+  const videos = data?.pages.flatMap((p) => p.data) ?? [];
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 60,
+  }).current;
 
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -167,134 +66,234 @@ export default function FeedScreen() {
     },
   ).current;
 
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
-      <FlatList
-        data={DUMMY_POSTS}
-        keyExtractor={(item) => item.id}
-        pagingEnabled
-        snapToInterval={SCREEN_H}
-        decelerationRate="fast"
-        showsVerticalScrollIndicator={false}
-        viewabilityConfig={viewabilityConfig}
-        onViewableItemsChanged={onViewableItemsChanged}
-        renderItem={({ item, index }) => (
-          <FeedCard
-            post={item}
-            isActive={index === activeIndex}
-            totalCount={DUMMY_POSTS.length}
-            currentIndex={index}
-          />
-        )}
-        getItemLayout={(_, index) => ({
-          length: SCREEN_H,
-          offset: SCREEN_H * index,
-          index,
-        })}
+
+      {/* Top tab selector */}
+      <View style={styles.topBar}>
+        <Pressable onPress={() => setTab("foryou")} hitSlop={8}>
+          <Text
+            style={tab === "foryou" ? styles.topTabActive : styles.topTabInactive}
+          >
+            For You
+          </Text>
+        </Pressable>
+        <View style={styles.topTabSeparator} />
+        <Pressable onPress={() => setTab("marketplace")} hitSlop={8}>
+          <Text
+            style={
+              tab === "marketplace" ? styles.topTabActive : styles.topTabInactive
+            }
+          >
+            Marketplace
+          </Text>
+        </Pressable>
+      </View>
+
+      {isLoading && videos.length === 0 ? (
+        <View style={styles.centerBox}>
+          <ActivityIndicator color={colors.white} size="large" />
+        </View>
+      ) : videos.length === 0 ? (
+        <View style={styles.centerBox}>
+          <Ionicons name="videocam-outline" size={48} color="rgba(255,255,255,0.4)" />
+          <Text style={styles.emptyTitle}>No videos yet</Text>
+          <Text style={styles.emptySub}>
+            Sellers haven't posted here yet.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={videos}
+          keyExtractor={(v) => v.id}
+          pagingEnabled
+          snapToInterval={SCREEN_H}
+          decelerationRate="fast"
+          showsVerticalScrollIndicator={false}
+          viewabilityConfig={viewabilityConfig}
+          onViewableItemsChanged={onViewableItemsChanged}
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.7}
+          renderItem={({ item, index }) => (
+            <FeedCard
+              video={item}
+              isActive={index === activeIndex}
+              currentIndex={index}
+              totalCount={videos.length}
+              onOpenComments={() => setCommentsOpenFor(item.id)}
+            />
+          )}
+          getItemLayout={(_, index) => ({
+            length: SCREEN_H,
+            offset: SCREEN_H * index,
+            index,
+          })}
+        />
+      )}
+
+      <CommentSheet
+        videoId={commentsOpenFor}
+        visible={!!commentsOpenFor}
+        onClose={() => setCommentsOpenFor(null)}
       />
     </View>
   );
 }
 
 function FeedCard({
-  post,
+  video,
   isActive,
-  totalCount,
   currentIndex,
+  totalCount,
+  onOpenComments,
 }: {
-  post: FeedPost;
+  video: Video;
   isActive: boolean;
-  totalCount: number;
   currentIndex: number;
+  totalCount: number;
+  onOpenComments: () => void;
 }) {
-  const [liked, setLiked] = useState(false);
-  const [following, setFollowing] = useState(false);
+  const router = useRouter();
+  const [liked, setLiked] = useState(video.isLiked ?? false);
+  const [likeCount, setLikeCount] = useState(video.likeCount);
+
+  const like = useLikeVideo(video.id);
+  const share = useShareVideo(video.id);
+  const follow = useFollow(video.user.id);
+  const { data: followStatus } = useFollowStatus(video.user.id);
+  const isFollowing = followStatus?.following ?? false;
+
+  // Video player (expo-video). Play only when card is active.
+  const player = useVideoPlayer(video.videoUrl, (p) => {
+    p.loop = true;
+    p.muted = false;
+  });
+
+  useEffect(() => {
+    if (isActive) {
+      player.play();
+    } else {
+      player.pause();
+    }
+  }, [isActive, player]);
+
+  const handleLike = () => {
+    const next = !liked;
+    setLiked(next);
+    setLikeCount((c) => c + (next ? 1 : -1));
+    like.mutate(
+      { like: next },
+      {
+        onError: () => {
+          setLiked(!next);
+          setLikeCount((c) => c + (next ? -1 : 1));
+        },
+      },
+    );
+  };
+
+  const handleFollow = () => {
+    follow.mutate({ follow: !isFollowing });
+  };
+
+  const handleShare = async () => {
+    const url = `https://bloodlineph.com/feed?v=${video.id}`;
+    try {
+      await Share.share({
+        message: `${video.caption.slice(0, 80)}\n\n${url}`,
+        url,
+      });
+      share.mutate();
+    } catch {
+      // user cancelled
+    }
+  };
+
+  const handleShopBird = () => {
+    if (!video.listing) return;
+    router.push(`/listing/${video.listing.slug}?ref=feed&v=${video.id}`);
+  };
+
+  const creatorName =
+    video.user.displayName || `${video.user.firstName} ${video.user.lastName}`;
+  const initials =
+    (video.user.firstName[0] || "") + (video.user.lastName[0] || "");
 
   return (
     <View style={styles.card}>
-      {/* Background image (simulates video keyframe) */}
-      <Image
-        source={{ uri: post.imageUrl }}
-        style={styles.bgImage}
-        resizeMode="cover"
+      {/* Video player */}
+      <VideoView
+        player={player}
+        style={StyleSheet.absoluteFillObject}
+        contentFit="cover"
+        nativeControls={false}
       />
 
-      {/* Dark gradient overlay top + bottom for text legibility */}
+      {/* Dark gradients for text legibility */}
       <LinearGradient
-        colors={["rgba(0,0,0,0.6)", "transparent", "transparent", "rgba(0,0,0,0.85)"]}
+        colors={["rgba(0,0,0,0.5)", "transparent", "transparent", "rgba(0,0,0,0.85)"]}
         locations={[0, 0.2, 0.6, 1]}
         style={StyleSheet.absoluteFill}
+        pointerEvents="none"
       />
 
-      {/* Play indicator (placeholder for video) */}
-      {isActive ? (
-        <View style={styles.playIndicator}>
-          <View style={styles.playIndicatorInner}>
-            <Ionicons name="play" size={32} color="rgba(255,255,255,0.9)" />
-          </View>
-          <Text style={styles.videoStub}>Video placeholder</Text>
-        </View>
-      ) : null}
-
-      {/* Top bar — Feed / Following tabs (TikTok-style) */}
-      <View style={styles.topBar}>
-        <Text style={styles.topTabInactive}>Following</Text>
-        <View style={styles.topTabSeparator} />
-        <Text style={styles.topTabActive}>For You</Text>
-        <View style={{ flex: 1 }} />
-        <Ionicons name="search" size={22} color={colors.white} />
-      </View>
-
-      {/* Pagination dots (right side, small) */}
+      {/* Pagination */}
       <View style={styles.pageIndicator}>
         <Text style={styles.pageText}>
           {currentIndex + 1} / {totalCount}
         </Text>
       </View>
 
-      {/* Right-side action column — like, comment, share, follow seller */}
+      {/* Right-side actions */}
       <View style={styles.actions}>
         <ActionButton
-          icon="heart"
+          icon="heart-outline"
           iconActive="heart"
           active={liked}
           activeColor={colors.primary}
-          label={formatCount(post.likes + (liked ? 1 : 0))}
-          onPress={() => setLiked((p) => !p)}
+          label={formatCount(likeCount)}
+          onPress={handleLike}
         />
         <ActionButton
           icon="chatbubble-ellipses-outline"
           iconActive="chatbubble-ellipses"
-          label={formatCount(post.comments)}
-          onPress={() => {}}
+          label={formatCount(video.commentCount)}
+          onPress={onOpenComments}
         />
         <ActionButton
           icon="arrow-redo-outline"
           iconActive="arrow-redo"
-          label={formatCount(post.shares)}
-          onPress={() => {}}
-        />
-        <ActionButton
-          icon="bookmark-outline"
-          iconActive="bookmark"
-          label=""
-          onPress={() => {}}
+          label={formatCount(video.shareCount)}
+          onPress={handleShare}
         />
 
-        {/* Avatar with follow button */}
+        {/* Avatar + follow badge */}
         <View style={styles.avatarWrap}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {post.username.charAt(0).toUpperCase()}
-            </Text>
+            {video.user.avatarUrl ? (
+              <Image
+                source={{ uri: video.user.avatarUrl }}
+                style={StyleSheet.absoluteFillObject}
+              />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
           </View>
           <Pressable
-            onPress={() => setFollowing((p) => !p)}
-            style={[styles.followBadge, following && styles.followingBadge]}
+            onPress={handleFollow}
+            style={[styles.followBadge, isFollowing && styles.followingBadge]}
+            hitSlop={8}
+            disabled={follow.isPending}
           >
             <Ionicons
-              name={following ? "checkmark" : "add"}
+              name={isFollowing ? "checkmark" : "add"}
               size={14}
               color={colors.white}
             />
@@ -302,58 +301,39 @@ function FeedCard({
         </View>
       </View>
 
-      {/* Bottom overlay — user info + caption + listing card */}
+      {/* Bottom overlay */}
       <View style={styles.bottomOverlay}>
         <View style={styles.userRow}>
-          <Text style={styles.username}>{post.username}</Text>
-          {post.verified ? (
-            <Ionicons
-              name="checkmark-circle"
-              size={14}
-              color={colors.info}
-              style={{ marginLeft: 4 }}
-            />
-          ) : null}
-          <Text style={styles.handle}> {post.handle}</Text>
+          <Text style={styles.username}>{creatorName}</Text>
+          <Ionicons
+            name="checkmark-circle"
+            size={14}
+            color={colors.info}
+            style={{ marginLeft: 4 }}
+          />
         </View>
 
-        <Text style={styles.caption} numberOfLines={2}>
-          {post.caption}
+        <Text style={styles.caption} numberOfLines={3}>
+          {video.caption}
         </Text>
 
-        <View style={styles.hashtagRow}>
-          {post.hashtags.map((tag) => (
-            <Text key={tag} style={styles.hashtag}>
-              {tag}
-            </Text>
-          ))}
-        </View>
-
-        <View style={styles.metaRow}>
-          <Ionicons name="location-outline" size={12} color={colors.white} />
-          <Text style={styles.metaText}>{post.location}</Text>
-          <Text style={styles.metaDot}>·</Text>
-          <Ionicons name="business-outline" size={12} color={colors.white} />
-          <Text style={styles.metaText}>{post.farm}</Text>
-        </View>
-
-        {/* If post is tied to a listing, show a small marketplace card */}
-        {post.hasListing ? (
-          <Pressable style={styles.listingCard}>
+        {/* Shop This Bird CTA — only on marketplace videos */}
+        {video.listing ? (
+          <Pressable
+            style={styles.listingCard}
+            onPress={handleShopBird}
+          >
             <View style={styles.listingIcon}>
               <Ionicons name="cart" size={14} color={colors.gold} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.listingLabel}>FOR SALE</Text>
+              <Text style={styles.listingLabel}>SHOP THIS BIRD</Text>
               <Text style={styles.listingTitle} numberOfLines={1}>
-                {post.hasListing.title}
+                {video.listing.title}
               </Text>
             </View>
             <Text style={styles.listingPrice}>
-              ₱
-              {post.hasListing.price.toLocaleString("en-PH", {
-                maximumFractionDigits: 0,
-              })}
+              {formatVideoPrice(video.listing.price)}
             </Text>
           </Pressable>
         ) : null}
@@ -391,7 +371,6 @@ function ActionButton({
 
 function formatCount(n: number): string {
   if (n < 1000) return String(n);
-  if (n < 10000) return (n / 1000).toFixed(1) + "K";
   if (n < 1_000_000) return Math.round(n / 1000) + "K";
   return (n / 1_000_000).toFixed(1) + "M";
 }
@@ -406,40 +385,32 @@ const styles = StyleSheet.create({
     height: SCREEN_H,
     backgroundColor: colors.black,
   },
-  bgImage: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  playIndicator: {
-    position: "absolute",
-    top: "45%",
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    gap: 8,
-  },
-  playIndicatorInner: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "rgba(0,0,0,0.4)",
+  centerBox: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
   },
-  videoStub: {
-    fontSize: 10,
+  emptyTitle: {
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.bold,
+    color: colors.white,
+    marginTop: 8,
+  },
+  emptySub: {
+    fontSize: fontSize.sm,
     color: "rgba(255,255,255,0.6)",
-    fontWeight: fontWeight.semibold,
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
   topBar: {
     position: "absolute",
     top: 60,
     left: 0,
     right: 0,
+    zIndex: 10,
     paddingHorizontal: spacing[4],
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 12,
   },
   topTabInactive: {
@@ -459,8 +430,8 @@ const styles = StyleSheet.create({
   },
   pageIndicator: {
     position: "absolute",
-    top: 60,
-    right: 50,
+    top: 64,
+    right: spacing[3],
   },
   pageText: {
     fontSize: fontSize.xs,
@@ -496,6 +467,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
     borderColor: colors.white,
+    overflow: "hidden",
   },
   avatarText: {
     color: colors.white,
@@ -519,9 +491,9 @@ const styles = StyleSheet.create({
   },
   bottomOverlay: {
     position: "absolute",
-    bottom: 90, // leave space for tab bar
+    bottom: 100,
     left: 0,
-    right: 70, // leave space for right actions
+    right: 70,
     paddingHorizontal: spacing[4],
     gap: 6,
   },
@@ -534,40 +506,10 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.bold,
     color: colors.white,
   },
-  handle: {
-    fontSize: fontSize.sm,
-    color: "rgba(255,255,255,0.7)",
-  },
   caption: {
     fontSize: fontSize.sm,
     color: colors.white,
     lineHeight: 20,
-  },
-  hashtagRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  hashtag: {
-    fontSize: fontSize.sm,
-    color: colors.gold,
-    fontWeight: fontWeight.semibold,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 2,
-    flexWrap: "wrap",
-  },
-  metaText: {
-    fontSize: fontSize.xs,
-    color: "rgba(255,255,255,0.85)",
-  },
-  metaDot: {
-    fontSize: fontSize.xs,
-    color: "rgba(255,255,255,0.5)",
-    marginHorizontal: 2,
   },
   listingCard: {
     flexDirection: "row",
@@ -577,7 +519,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     backgroundColor: "rgba(255,255,255,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(251,191,36,0.4)",
+    borderColor: "rgba(251,191,36,0.5)",
     marginTop: 6,
   },
   listingIcon: {
@@ -592,7 +534,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: fontWeight.bold,
     color: colors.gold,
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   listingTitle: {
     fontSize: fontSize.sm,

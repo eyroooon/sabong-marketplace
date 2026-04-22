@@ -7,7 +7,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { apiGet, apiPost } from "./api";
+import { apiGet, apiPost, apiPatch } from "./api";
 
 export type OrderStatus =
   | "pending"
@@ -132,6 +132,35 @@ export function useDisputeOrder(orderId: string) {
   >({
     mutationFn: (input) =>
       apiPost<{ escrowStatus: string }>(`/orders/${orderId}/dispute`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["orders", orderId] });
+    },
+  });
+}
+
+/** Seller → PATCH /orders/:id/confirm → status becomes confirmed. */
+export function useConfirmOrder(orderId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ status: string }, Error, void>({
+    mutationFn: () => apiPatch<{ status: string }>(`/orders/${orderId}/confirm`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["orders", orderId] });
+    },
+  });
+}
+
+/** Seller → PATCH /orders/:id/ship with tracking info → status becomes shipped. */
+export function useShipOrder(orderId: string) {
+  const qc = useQueryClient();
+  return useMutation<
+    { status: string },
+    Error,
+    { trackingNumber: string; shippingProvider: string }
+  >({
+    mutationFn: (input) =>
+      apiPatch<{ status: string }>(`/orders/${orderId}/ship`, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["orders", orderId] });

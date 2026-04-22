@@ -23,11 +23,19 @@ import {
   usePayOrder,
   useAcceptDelivery,
   useDisputeOrder,
+  useConfirmOrder,
+  useShipOrder,
   formatOrderPrice,
   ORDER_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
   type OrderStatus,
 } from "@/lib/orders";
+import {
+  useOrderReview,
+  useCreateReview,
+  useRespondToReview,
+} from "@/lib/reviews";
+import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/Button";
 import {
   colors,
@@ -62,12 +70,34 @@ const STATUS_ORDER: Record<OrderStatus, number> = {
 export default function OrderDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuth();
   const { data: order, isLoading, error } = useOrder(id);
   const pay = usePayOrder(id!);
   const accept = useAcceptDelivery(id!);
   const dispute = useDisputeOrder(id!);
+  const confirm = useConfirmOrder(id!);
+  const ship = useShipOrder(id!);
+  const createReview = useCreateReview();
+  const { data: existingReview } = useOrderReview(id);
+
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
+  const [shipOpen, setShipOpen] = useState(false);
+  const [shipProvider, setShipProvider] = useState("");
+  const [shipTracking, setShipTracking] = useState("");
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [responseOpen, setResponseOpen] = useState(false);
+  const [responseText, setResponseText] = useState("");
+
+  const isBuyer = !!(user && order && order.buyerId === user.id);
+  const isSeller = !!(
+    user &&
+    order &&
+    (order as any).seller?.userId === user.id
+  );
+  const respond = useRespondToReview(existingReview?.id ?? "", id!);
 
   if (isLoading) {
     return (
@@ -127,6 +157,81 @@ export default function OrderDetailScreen() {
           );
         },
         onError: (err) => Alert.alert("Failed to open dispute", err.message),
+      },
+    );
+  };
+
+  const handleConfirm = () => {
+    Alert.alert("Confirm order?", "Let the buyer know you're preparing to ship.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Confirm",
+        onPress: () =>
+          confirm.mutate(undefined, {
+            onError: (err) => Alert.alert("Failed", err.message),
+          }),
+      },
+    ]);
+  };
+
+  const handleSubmitShip = () => {
+    if (!shipTracking.trim() || !shipProvider.trim()) {
+      Alert.alert(
+        "Missing info",
+        "Please enter both shipping provider and tracking number.",
+      );
+      return;
+    }
+    ship.mutate(
+      { trackingNumber: shipTracking.trim(), shippingProvider: shipProvider.trim() },
+      {
+        onSuccess: () => {
+          setShipOpen(false);
+          setShipProvider("");
+          setShipTracking("");
+          Alert.alert(
+            "Shipment recorded",
+            "The buyer has been notified with your tracking number.",
+          );
+        },
+        onError: (err) => Alert.alert("Failed to mark shipped", err.message),
+      },
+    );
+  };
+
+  const handleSubmitReview = () => {
+    if (reviewRating === 0) {
+      Alert.alert("Rating required", "Please pick a star rating.");
+      return;
+    }
+    createReview.mutate(
+      {
+        orderId: id!,
+        rating: reviewRating,
+        comment: reviewComment.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          setReviewOpen(false);
+          setReviewRating(0);
+          setReviewComment("");
+          Alert.alert("Review posted!", "Salamat sa feedback mo.");
+        },
+        onError: (err) => Alert.alert("Failed", err.message),
+      },
+    );
+  };
+
+  const handleSubmitResponse = () => {
+    if (!responseText.trim() || !existingReview) return;
+    respond.mutate(
+      { response: responseText.trim() },
+      {
+        onSuccess: () => {
+          setResponseOpen(false);
+          setResponseText("");
+        },
+        onError: (err) => Alert.alert("Failed", err.message),
       },
     );
   };
@@ -474,6 +579,75 @@ export default function OrderDetailScreen() {
             <Text style={styles.address}>{order.sellerNotes}</Text>
           </View>
         ) : null}
+
+        {/* Review card — buyer + seller see this when escrow released */}
+        {order.status === "completed" && order.escrowStatus === "released" ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionLabel}>
+              {isBuyer ? "Your Review" : "Buyer's Review"}
+            </Text>
+            {existingReview ? (
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: "row", gap: 2 }}>
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <Ionicons
+                      key={s}
+                      name={s <= existingReview.rating ? "star" : "star-outline"}
+                      size={18}
+                      color={colors.gold}
+                    />
+                  ))}
+                </View>
+                {existingReview.comment ? (
+                  <Text style={styles.address}>{existingReview.comment}</Text>
+                ) : null}
+                {existingReview.sellerResponse ? (
+                  <View style={styles.sellerResponseBox}>
+                    <Text style={styles.sellerResponseLabel}>
+                      Seller Response
+                    </Text>
+                    <Text style={styles.address}>
+                      {existingReview.sellerResponse}
+                    </Text>
+                  </View>
+                ) : null}
+                {isSeller && !existingReview.sellerResponse ? (
+                  <Pressable
+                    onPress={() => setResponseOpen(true)}
+                    style={({ pressed }) => [
+                      styles.respondBtn,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Ionicons
+                      name="chatbubble-ellipses"
+                      size={16}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.respondBtnText}>
+                      Respond to this review
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : isBuyer ? (
+              <Pressable
+                onPress={() => setReviewOpen(true)}
+                style={({ pressed }) => [
+                  styles.respondBtn,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Ionicons name="star" size={16} color={colors.gold} />
+                <Text style={styles.respondBtnText}>Leave a Review</Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.address}>
+                Waiting for buyer to leave a review.
+              </Text>
+            )}
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Sticky action bar */}
@@ -493,6 +667,31 @@ export default function OrderDetailScreen() {
               style={{ flex: 1.4 }}
             >
               Pay Now
+            </Button>
+          </View>
+        </SafeAreaView>
+      ) : isSeller && order.status === "paid" ? (
+        <SafeAreaView edges={["bottom"]} style={styles.actionBarWrap}>
+          <View style={styles.actionBarInner}>
+            <Button
+              variant="gold"
+              onPress={handleConfirm}
+              loading={confirm.isPending}
+              style={{ flex: 1 }}
+            >
+              Confirm Order
+            </Button>
+          </View>
+        </SafeAreaView>
+      ) : isSeller && order.status === "confirmed" ? (
+        <SafeAreaView edges={["bottom"]} style={styles.actionBarWrap}>
+          <View style={styles.actionBarInner}>
+            <Button
+              variant="gold"
+              onPress={() => setShipOpen(true)}
+              style={{ flex: 1 }}
+            >
+              Mark as Shipped
             </Button>
           </View>
         </SafeAreaView>
@@ -542,6 +741,203 @@ export default function OrderDetailScreen() {
           </View>
         </SafeAreaView>
       ) : null}
+
+      {/* Ship modal (seller) */}
+      <Modal
+        visible={shipOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShipOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Shipping Details</Text>
+              <Pressable onPress={() => setShipOpen(false)} hitSlop={10}>
+                <Ionicons name="close" size={22} color={colors.muted} />
+              </Pressable>
+            </View>
+            <Text style={styles.modalHelp}>
+              Enter the courier and tracking number so the buyer can track their order.
+            </Text>
+            <TextInput
+              value={shipProvider}
+              onChangeText={setShipProvider}
+              placeholder="Courier (e.g. LBC, J&T)"
+              placeholderTextColor={colors.muted}
+              style={styles.modalInputSingle}
+            />
+            <TextInput
+              value={shipTracking}
+              onChangeText={setShipTracking}
+              placeholder="Tracking number"
+              placeholderTextColor={colors.muted}
+              style={styles.modalInputSingle}
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setShipOpen(false)}
+                style={({ pressed }) => [
+                  styles.modalCancel,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSubmitShip}
+                disabled={ship.isPending}
+                style={({ pressed }) => [
+                  styles.modalSubmitGold,
+                  ship.isPending && { opacity: 0.5 },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                {ship.isPending ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <Text style={styles.modalSubmitText}>Confirm Shipment</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Review modal (buyer) */}
+      <Modal
+        visible={reviewOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReviewOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Leave a Review</Text>
+              <Pressable onPress={() => setReviewOpen(false)} hitSlop={10}>
+                <Ionicons name="close" size={22} color={colors.muted} />
+              </Pressable>
+            </View>
+            <Text style={styles.modalHelp}>
+              Share your experience. Your review helps other buyers.
+            </Text>
+            <View style={styles.starRow}>
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Pressable
+                  key={s}
+                  onPress={() => setReviewRating(s)}
+                  hitSlop={4}
+                >
+                  <Ionicons
+                    name={s <= reviewRating ? "star" : "star-outline"}
+                    size={38}
+                    color={colors.gold}
+                  />
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              value={reviewComment}
+              onChangeText={setReviewComment}
+              placeholder="Share details of your experience…"
+              placeholderTextColor={colors.muted}
+              multiline
+              numberOfLines={3}
+              maxLength={2000}
+              style={styles.modalInput}
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setReviewOpen(false)}
+                style={({ pressed }) => [
+                  styles.modalCancel,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSubmitReview}
+                disabled={createReview.isPending || reviewRating === 0}
+                style={({ pressed }) => [
+                  styles.modalSubmitGold,
+                  (createReview.isPending || reviewRating === 0) && {
+                    opacity: 0.5,
+                  },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                {createReview.isPending ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <Text style={styles.modalSubmitText}>Submit Review</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Response modal (seller) */}
+      <Modal
+        visible={responseOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setResponseOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Respond to Review</Text>
+              <Pressable onPress={() => setResponseOpen(false)} hitSlop={10}>
+                <Ionicons name="close" size={22} color={colors.muted} />
+              </Pressable>
+            </View>
+            <Text style={styles.modalHelp}>
+              Thank the buyer or address their feedback.
+            </Text>
+            <TextInput
+              value={responseText}
+              onChangeText={setResponseText}
+              placeholder="Your response…"
+              placeholderTextColor={colors.muted}
+              multiline
+              numberOfLines={4}
+              maxLength={1000}
+              style={styles.modalInput}
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setResponseOpen(false)}
+                style={({ pressed }) => [
+                  styles.modalCancel,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSubmitResponse}
+                disabled={respond.isPending || !responseText.trim()}
+                style={({ pressed }) => [
+                  styles.modalSubmitGold,
+                  (respond.isPending || !responseText.trim()) && {
+                    opacity: 0.5,
+                  },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                {respond.isPending ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <Text style={styles.modalSubmitText}>Post Response</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Dispute modal */}
       <Modal
@@ -1155,9 +1551,64 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  modalSubmitGold: {
+    flex: 1.5,
+    paddingVertical: 12,
+    borderRadius: radii.full,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   modalSubmitText: {
     fontSize: fontSize.sm,
     fontWeight: fontWeight.black,
     color: colors.white,
+  },
+  modalInputSingle: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: fontSize.base,
+    color: colors.foreground,
+  },
+  starRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+  },
+  sellerResponseBox: {
+    marginTop: 6,
+    padding: 12,
+    borderRadius: radii.lg,
+    backgroundColor: colors.mutedBg,
+  },
+  sellerResponseLabel: {
+    fontSize: 10,
+    fontWeight: fontWeight.bold,
+    color: colors.muted,
+    marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  respondBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 10,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.primary,
+    backgroundColor: "rgba(220,38,38,0.05)",
+  },
+  respondBtnText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
   },
 });
