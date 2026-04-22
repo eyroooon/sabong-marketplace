@@ -77,27 +77,19 @@ export type DemoUserKey = (typeof DEMO_USERS)[number]["key"];
 // Real rooster / gamefowl / farm photos from Unsplash (royalty-free).
 // Each is a proven-working permanent URL. Pool is hashed by seed so
 // each listing gets a stable selection across reseeds.
+// Verified (curl-tested) Unsplash photo IDs that return HTTP 200.
 const ROOSTER_PHOTO_POOL: readonly string[] = [
-  "photo-1583510383754-35fc1d1eb598", // rooster classic
-  "photo-1585670603060-f92c1e4f3d12", // farm chicken
-  "photo-1622997882237-e24385e6ab4a", // chicken portrait
-  "photo-1545251765-6aad90d25972", // rooster head
-  "photo-1709751797406-7e657b0a3897", // barnyard chicken
-  "photo-1504698870715-44a21cbf4cae", // rooster on fence
-  "photo-1534337621606-e3df5ee0e97f", // colorful rooster
-  "photo-1598715685267-0f45367d8071", // rooster on the ground
-  "photo-1523473125691-8edd0f9e16a0", // rooster crowing
-  "photo-1569591159212-b02ea8a9f239", // rooster closeup
-  "photo-1548550023-2bdb3c5beed7", // black rooster
-  "photo-1612170153139-6f881ff067e0", // rooster in grass
-  "photo-1591185268943-1b0bb4efdcc1", // farmyard chicken
-  "photo-1548550023-2bdb3c5beed7", // dark rooster (repeat ok)
-  "photo-1557677048-7d88b2a7fd10", // chicken on farm
-  "photo-1589088491223-a9bb1f5b6cba", // rooster head
-  "photo-1525396845-5bfd4985b8e4", // brown rooster
-  "photo-1563861826100-9cb868fdbe1c", // game bird
-  "photo-1606751445321-1e5f69f3ed1a", // rooster with chicks
-  "photo-1574670812144-2d43257ef52e", // chicken on grass
+  "photo-1583510383754-35fc1d1eb598",
+  "photo-1585670603060-f92c1e4f3d12",
+  "photo-1622997882237-e24385e6ab4a",
+  "photo-1545251765-6aad90d25972",
+  "photo-1709751797406-7e657b0a3897",
+  "photo-1534337621606-e3df5ee0e97f",
+  "photo-1598715685267-0f45367d8071",
+  "photo-1569591159212-b02ea8a9f239",
+  "photo-1548550023-2bdb3c5beed7",
+  "photo-1612170153139-6f881ff067e0",
+  "photo-1563861826100-9cb868fdbe1c",
 ] as const;
 
 /**
