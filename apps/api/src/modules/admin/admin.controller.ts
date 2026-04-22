@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Patch,
+  Post,
   Param,
   Query,
   Body,
@@ -91,5 +92,74 @@ export class AdminController {
     @Body() body: { status: string },
   ) {
     return this.adminService.toggleListingStatus(id, body.status);
+  }
+
+  // ========== Seller Verifications ==========
+
+  @Get("verifications")
+  getPendingVerifications() {
+    return this.adminService.getPendingVerifications();
+  }
+
+  @Post("verifications/:sellerId/approve")
+  approveVerification(@Param("sellerId") sellerId: string) {
+    return this.adminService.approveVerification(sellerId);
+  }
+
+  @Post("verifications/:sellerId/reject")
+  rejectVerification(
+    @Param("sellerId") sellerId: string,
+    @Body() body: { reason: string },
+  ) {
+    return this.adminService.rejectVerification(
+      sellerId,
+      body.reason || "No reason given",
+    );
+  }
+
+  // ========== Broadcast ==========
+
+  @Post("broadcast")
+  broadcast(
+    @Body()
+    body: {
+      title: string;
+      body: string;
+      audience?: "all" | "buyers" | "sellers" | "verified_sellers";
+    },
+  ) {
+    return this.adminService.broadcast(
+      body.title,
+      body.body,
+      body.audience || "all",
+    );
+  }
+
+  // ========== Disputes ==========
+
+  @Get("disputes")
+  listDisputes() {
+    return this.adminService.listDisputes();
+  }
+
+  @Post("disputes/:orderId/resolve")
+  resolveDispute(
+    @Param("orderId") orderId: string,
+    @CurrentUser("id") adminId: string,
+    @Body() body: { decision: "release" | "refund"; notes: string },
+  ) {
+    return this.adminService.resolveDispute(
+      orderId,
+      adminId,
+      body.decision,
+      body.notes || "",
+    );
+  }
+
+  // ========== Demo Reset ==========
+
+  @Post("demo-reset")
+  demoReset() {
+    return this.adminService.runDemoReset();
   }
 }

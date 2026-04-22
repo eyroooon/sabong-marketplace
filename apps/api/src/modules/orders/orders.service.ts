@@ -811,6 +811,195 @@ export class OrdersService {
     return { id: updated.id, status: updated.status };
   }
 
+  /**
+   * Buyer accepts delivery — releases escrow + completes the order.
+   * This is semantically equivalent to completeOrder but named for the
+   * buyer-facing "Accept & Release Payment" button.
+   */
+  async acceptDelivery(orderId: string, userId: string) {
+    return this.completeOrder(orderId, userId);
+  }
+
+  /**
+   * Buyer reports an issue with a delivered order. Escrow is flipped to
+   * "disputed" and both the admin + the seller are notified.
+   */
+  async reportIssue(
+    orderId: string,
+    userId: string,
+    reason: string,
+    photos: string[] = [],
+  ) {
+    const order = await this.getOrderForBuyer(orderId, userId);
+    if (!["shipped", "delivered"].includes(order.status)) {
+      throw new BadRequestException(
+        "Can only report issues on shipped or delivered orders",
+      );
+    }
+    if (order.escrowStatus !== "held") {
+      throw new BadRequestException(
+        "Dispute can only be opened while escrow is held",
+      );
+    }
+
+    const [updated] = await this.db
+      .update(orders)
+      .set({
+        escrowStatus: "disputed",
+        buyerNotes: `[DISPUTE] ${reason}\n\n${
+          photos.length > 0 ? `Photos:\n${photos.join("\n")}` : ""
+        }`,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+
+    // Notify seller
+    const [seller] = await this.db
+      .select()
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.id, order.sellerId))
+      .limit(1);
+    if (seller?.userId) {
+      this.notificationsService
+        .create({
+          userId: seller.userId,
+          type: "order_disputed",
+          title: "Dispute opened",
+          body: `Buyer reported an issue on order ${order.orderNumber}: ${reason.slice(
+            0,
+            80,
+          )}`,
+          data: { orderId: order.id },
+        })
+        .catch(() => {});
+    }
+
+    // Notify admins
+    const admins = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.role, "admin"));
+    for (const admin of admins) {
+      this.notificationsService
+        .create({
+          userId: admin.id,
+          type: "dispute_opened",
+          title: "New dispute",
+          body: `Order ${order.orderNumber} has a new dispute — review needed`,
+          data: { orderId: order.id },
+        })
+        .catch(() => {});
+    }
+
+    return { id: updated.id, escrowStatus: updated.escrowStatus };
+  }
+
+  /**
+   * Admin resolves a dispute: either release funds to seller or refund buyer.
+   * Only admins can call this.
+   */
+  async resolveDispute(
+    orderId: string,
+    adminId: string,
+    decision: "release" | "refund",
+    notes: string,
+  ) {
+    const [admin] = await this.db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(eq(users.id, adminId))
+      .limit(1);
+    if (!admin || admin.role !== "admin") {
+      throw new ForbiddenException("Admin only");
+    }
+
+    const [order] = await this.db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    if (!order) throw new NotFoundException("Order not found");
+    if (order.escrowStatus !== "disputed") {
+      throw new BadRequestException("Order is not in dispute");
+    }
+
+    const now = new Date();
+    const [updated] = await this.db
+      .update(orders)
+      .set({
+        escrowStatus: decision === "release" ? "released" : "refunded",
+        status: decision === "release" ? "completed" : "cancelled",
+        escrowReleasedAt: decision === "release" ? now : null,
+        completedAt: decision === "release" ? now : null,
+        cancelledAt: decision === "refund" ? now : null,
+        sellerNotes: `[ADMIN RESOLUTION: ${decision.toUpperCase()}] ${notes}`,
+        updatedAt: now,
+      })
+      .where(eq(orders.id, orderId))
+      .returning();
+
+    // Update listing status
+    if (decision === "release") {
+      await this.db
+        .update(listings)
+        .set({ status: "sold", updatedAt: now })
+        .where(eq(listings.id, order.listingId));
+      // Seller stats
+      await this.db
+        .update(sellerProfiles)
+        .set({
+          totalSales: sql`${sellerProfiles.totalSales} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(sellerProfiles.id, order.sellerId));
+    } else {
+      await this.db
+        .update(listings)
+        .set({ status: "active", updatedAt: now })
+        .where(eq(listings.id, order.listingId));
+    }
+
+    // Notify both parties
+    const [seller] = await this.db
+      .select({ userId: sellerProfiles.userId })
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.id, order.sellerId))
+      .limit(1);
+
+    const sellerBody =
+      decision === "release"
+        ? `Payment released — ₱${order.totalAmount}`
+        : `Order refunded to buyer. Reason: ${notes.slice(0, 100)}`;
+    const buyerBody =
+      decision === "release"
+        ? `Admin released payment to seller. Reason: ${notes.slice(0, 100)}`
+        : `Your refund has been processed for order ${order.orderNumber}`;
+
+    if (seller?.userId) {
+      this.notificationsService
+        .create({
+          userId: seller.userId,
+          type: "dispute_resolved",
+          title: `Dispute ${decision}d`,
+          body: sellerBody,
+          data: { orderId: order.id },
+        })
+        .catch(() => {});
+    }
+    this.notificationsService
+      .create({
+        userId: order.buyerId,
+        type: "dispute_resolved",
+        title: `Dispute ${decision}d`,
+        body: buyerBody,
+        data: { orderId: order.id },
+      })
+      .catch(() => {});
+
+    return { id: updated.id, escrowStatus: updated.escrowStatus };
+  }
+
   private async getOrderForSeller(orderId: string, userId: string) {
     const [order] = await this.db
       .select()

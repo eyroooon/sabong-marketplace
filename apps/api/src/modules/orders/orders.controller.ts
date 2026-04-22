@@ -103,6 +103,30 @@ export class OrdersController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post(":id/accept-delivery")
+  acceptDelivery(
+    @Param("id") id: string,
+    @CurrentUser("id") userId: string,
+  ) {
+    return this.ordersService.acceptDelivery(id, userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post(":id/dispute")
+  reportIssue(
+    @Param("id") id: string,
+    @CurrentUser("id") userId: string,
+    @Body() body: { reason: string; photos?: string[] },
+  ) {
+    return this.ordersService.reportIssue(
+      id,
+      userId,
+      body.reason || "No reason given",
+      body.photos || [],
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch(":id/complete")
   complete(
     @Param("id") id: string,

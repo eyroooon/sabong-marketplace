@@ -16,8 +16,10 @@ import { memoryStorage } from "multer";
 import { VideosService } from "./videos.service";
 import { CreateVideoDto } from "./dto/create-video.dto";
 import { FeedQueryDto } from "./dto/feed-query.dto";
+import { CreateCommentDto } from "./dto/create-comment.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
+import { SanitizePipe } from "../../common/pipes/sanitize.pipe";
 
 const videoFileFilter = (
   _req: any,
@@ -102,5 +104,36 @@ export class VideosController {
     @Param("id") videoId: string,
   ) {
     return this.videosService.remove(videoId, userId);
+  }
+
+  // -------------------- Comments --------------------
+
+  @Get(":id/comments")
+  listComments(@Param("id") videoId: string) {
+    return this.videosService.listComments(videoId);
+  }
+
+  @Post(":id/comments")
+  @UseGuards(JwtAuthGuard)
+  createComment(
+    @Param("id") videoId: string,
+    @CurrentUser("id") userId: string,
+    @Body() dto: CreateCommentDto,
+  ) {
+    return this.videosService.createComment(videoId, userId, dto);
+  }
+
+  @Delete("comments/:commentId")
+  @UseGuards(JwtAuthGuard)
+  deleteComment(
+    @Param("commentId") commentId: string,
+    @CurrentUser("id") userId: string,
+  ) {
+    return this.videosService.deleteComment(commentId, userId);
+  }
+
+  @Post(":id/share")
+  share(@Param("id") videoId: string) {
+    return this.videosService.share(videoId);
   }
 }

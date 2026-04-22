@@ -11,14 +11,36 @@ import { DRIZZLE } from "../../database/database.module";
 import {
   videos,
   videoLikes,
+  videoComments,
   users,
   listings,
   sellerProfiles,
 } from "../../database/schema";
 import { CreateVideoDto } from "./dto/create-video.dto";
 import { FeedQueryDto } from "./dto/feed-query.dto";
+import { CreateCommentDto } from "./dto/create-comment.dto";
 import { StorageService } from "../../common/storage/storage.service";
 import { SellersService } from "../sellers/sellers.service";
+import { NotificationsService } from "../notifications/notifications.service";
+
+export interface CommentUser {
+  id: string;
+  firstName: string;
+  lastName: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
+export interface CommentNode {
+  id: string;
+  videoId: string;
+  parentId: string | null;
+  content: string;
+  likeCount: number;
+  createdAt: Date;
+  user: CommentUser;
+  replies: CommentNode[];
+}
 
 @Injectable()
 export class VideosService {
@@ -26,6 +48,7 @@ export class VideosService {
     @Inject(DRIZZLE) private db: any,
     private storageService: StorageService,
     private sellersService: SellersService,
+    private notificationsService: NotificationsService,
   ) {}
 
   async create(
@@ -318,5 +341,206 @@ export class VideosService {
     await this.storageService.delete(video.videoUrl);
 
     return { message: "Video deleted" };
+  }
+
+  // -------------------- Comments --------------------
+
+  async listComments(videoId: string) {
+    const rows = await this.db
+      .select({
+        id: videoComments.id,
+        videoId: videoComments.videoId,
+        userId: videoComments.userId,
+        parentId: videoComments.parentId,
+        content: videoComments.content,
+        likeCount: videoComments.likeCount,
+        createdAt: videoComments.createdAt,
+        userFirstName: users.firstName,
+        userLastName: users.lastName,
+        userDisplayName: users.displayName,
+        userAvatarUrl: users.avatarUrl,
+      })
+      .from(videoComments)
+      .innerJoin(users, eq(videoComments.userId, users.id))
+      .where(eq(videoComments.videoId, videoId))
+      .orderBy(desc(videoComments.createdAt));
+
+    type Row = (typeof rows)[number];
+
+    const byId = new Map<string, CommentNode>();
+    rows.forEach((r: Row) => {
+      byId.set(r.id, {
+        id: r.id,
+        videoId: r.videoId,
+        parentId: r.parentId,
+        content: r.content,
+        likeCount: r.likeCount,
+        createdAt: r.createdAt,
+        user: {
+          id: r.userId,
+          firstName: r.userFirstName,
+          lastName: r.userLastName,
+          displayName: r.userDisplayName,
+          avatarUrl: r.userAvatarUrl,
+        },
+        replies: [],
+      });
+    });
+
+    const roots: CommentNode[] = [];
+    byId.forEach((c) => {
+      if (c.parentId) {
+        const parent = byId.get(c.parentId);
+        if (parent) {
+          parent.replies.unshift(c); // chronological asc for replies
+        } else {
+          roots.push(c); // orphan (parent deleted) — surface as top-level
+        }
+      } else {
+        roots.push(c);
+      }
+    });
+
+    return { data: roots };
+  }
+
+  async createComment(
+    videoId: string,
+    userId: string,
+    dto: CreateCommentDto,
+  ) {
+    const [video] = await this.db
+      .select({ id: videos.id, userId: videos.userId, caption: videos.caption })
+      .from(videos)
+      .where(and(eq(videos.id, videoId), eq(videos.status, "active")))
+      .limit(1);
+
+    if (!video) throw new NotFoundException("Video not found");
+
+    if (dto.parentId) {
+      const [parent] = await this.db
+        .select({ id: videoComments.id, userId: videoComments.userId })
+        .from(videoComments)
+        .where(
+          and(
+            eq(videoComments.id, dto.parentId),
+            eq(videoComments.videoId, videoId),
+          ),
+        )
+        .limit(1);
+      if (!parent) throw new NotFoundException("Parent comment not found");
+    }
+
+    const [comment] = await this.db
+      .insert(videoComments)
+      .values({
+        videoId,
+        userId,
+        parentId: dto.parentId ?? null,
+        content: dto.content,
+      })
+      .returning();
+
+    await this.db
+      .update(videos)
+      .set({ commentCount: sql`${videos.commentCount} + 1` })
+      .where(eq(videos.id, videoId));
+
+    // Notify video owner (skip if commenter IS the owner)
+    if (video.userId !== userId) {
+      const [commenter] = await this.db
+        .select({
+          firstName: users.firstName,
+          displayName: users.displayName,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      const commenterName =
+        commenter?.displayName || commenter?.firstName || "Someone";
+      await this.notificationsService.create({
+        userId: video.userId,
+        type: "video_comment",
+        title: "New comment",
+        body: `${commenterName} commented: "${dto.content.slice(0, 80)}"`,
+        data: { videoId, commentId: comment.id },
+      });
+    }
+
+    const [withUser] = await this.db
+      .select({
+        id: videoComments.id,
+        content: videoComments.content,
+        parentId: videoComments.parentId,
+        likeCount: videoComments.likeCount,
+        createdAt: videoComments.createdAt,
+        userFirstName: users.firstName,
+        userLastName: users.lastName,
+        userDisplayName: users.displayName,
+        userAvatarUrl: users.avatarUrl,
+      })
+      .from(videoComments)
+      .innerJoin(users, eq(videoComments.userId, users.id))
+      .where(eq(videoComments.id, comment.id))
+      .limit(1);
+
+    return {
+      id: withUser.id,
+      content: withUser.content,
+      parentId: withUser.parentId,
+      likeCount: withUser.likeCount,
+      createdAt: withUser.createdAt,
+      user: {
+        id: userId,
+        firstName: withUser.userFirstName,
+        lastName: withUser.userLastName,
+        displayName: withUser.userDisplayName,
+        avatarUrl: withUser.userAvatarUrl,
+      },
+      replies: [],
+    };
+  }
+
+  async deleteComment(commentId: string, userId: string) {
+    const [comment] = await this.db
+      .select({
+        id: videoComments.id,
+        videoId: videoComments.videoId,
+        userId: videoComments.userId,
+      })
+      .from(videoComments)
+      .where(eq(videoComments.id, commentId))
+      .limit(1);
+
+    if (!comment) throw new NotFoundException("Comment not found");
+    if (comment.userId !== userId) {
+      throw new ForbiddenException("You can only delete your own comments");
+    }
+
+    await this.db.delete(videoComments).where(eq(videoComments.id, commentId));
+
+    // Decrement count (best effort — race-safe via GREATEST)
+    await this.db
+      .update(videos)
+      .set({ commentCount: sql`GREATEST(${videos.commentCount} - 1, 0)` })
+      .where(eq(videos.id, comment.videoId));
+
+    return { message: "Comment deleted" };
+  }
+
+  async share(videoId: string) {
+    const [video] = await this.db
+      .select({ id: videos.id })
+      .from(videos)
+      .where(and(eq(videos.id, videoId), eq(videos.status, "active")))
+      .limit(1);
+    if (!video) throw new NotFoundException("Video not found");
+
+    await this.db
+      .update(videos)
+      .set({ shareCount: sql`${videos.shareCount} + 1` })
+      .where(eq(videos.id, videoId));
+
+    return { message: "Shared" };
   }
 }

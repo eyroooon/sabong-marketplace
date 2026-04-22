@@ -1,5 +1,13 @@
-import { Injectable, Inject, NotFoundException } from "@nestjs/common";
-import { eq, desc, sql, and, gte, lt, isNotNull } from "drizzle-orm";
+import {
+  Injectable,
+  Inject,
+  NotFoundException,
+  BadRequestException,
+} from "@nestjs/common";
+import { eq, desc, sql, and, gte, lt, isNotNull, or, ne } from "drizzle-orm";
+import { exec } from "child_process";
+import { promisify } from "util";
+import * as path from "path";
 import { DRIZZLE } from "../../database/database.module";
 import {
   users,
@@ -8,12 +16,20 @@ import {
   reports,
   sellerProfiles,
 } from "../../database/schema";
+import { NotificationsService } from "../notifications/notifications.service";
+import { OrdersService } from "../orders/orders.service";
+
+const execAsync = promisify(exec);
 
 type TimeRange = "day" | "week" | "month" | "year";
 
 @Injectable()
 export class AdminService {
-  constructor(@Inject(DRIZZLE) private db: any) {}
+  constructor(
+    @Inject(DRIZZLE) private db: any,
+    private notificationsService: NotificationsService,
+    private ordersService: OrdersService,
+  ) {}
 
   async getDashboardStats() {
     const [userCount] = await this.db
@@ -560,5 +576,206 @@ export class AdminService {
     }
 
     return series;
+  }
+
+  // ==================== Seller Verifications ====================
+
+  async getPendingVerifications() {
+    const rows = await this.db
+      .select({
+        id: sellerProfiles.id,
+        userId: sellerProfiles.userId,
+        farmName: sellerProfiles.farmName,
+        businessType: sellerProfiles.businessType,
+        description: sellerProfiles.description,
+        governmentIdUrl: sellerProfiles.governmentIdUrl,
+        farmPermitUrl: sellerProfiles.farmPermitUrl,
+        farmProvince: sellerProfiles.farmProvince,
+        farmCity: sellerProfiles.farmCity,
+        createdAt: sellerProfiles.createdAt,
+        userFirstName: users.firstName,
+        userLastName: users.lastName,
+        userDisplayName: users.displayName,
+        userAvatarUrl: users.avatarUrl,
+        userPhone: users.phone,
+      })
+      .from(sellerProfiles)
+      .innerJoin(users, eq(sellerProfiles.userId, users.id))
+      .where(eq(sellerProfiles.verificationStatus, "pending"))
+      .orderBy(desc(sellerProfiles.createdAt));
+
+    return { data: rows };
+  }
+
+  async approveVerification(sellerId: string) {
+    const [seller] = await this.db
+      .select()
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.id, sellerId))
+      .limit(1);
+    if (!seller) throw new NotFoundException("Seller not found");
+
+    await this.db
+      .update(sellerProfiles)
+      .set({
+        verificationStatus: "verified",
+        verifiedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(sellerProfiles.id, sellerId));
+
+    // Promote user's role to seller if not already, and mark verified
+    await this.db
+      .update(users)
+      .set({
+        role: "seller",
+        isVerified: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, seller.userId));
+
+    // Notify seller
+    await this.notificationsService.create({
+      userId: seller.userId,
+      type: "verification_approved",
+      title: "🎉 Verification approved!",
+      body: `Congratulations! Your farm "${seller.farmName}" is now verified. Start posting listings!`,
+      data: { sellerId },
+    });
+
+    return { id: sellerId, verificationStatus: "verified" };
+  }
+
+  async rejectVerification(sellerId: string, reason: string) {
+    const [seller] = await this.db
+      .select()
+      .from(sellerProfiles)
+      .where(eq(sellerProfiles.id, sellerId))
+      .limit(1);
+    if (!seller) throw new NotFoundException("Seller not found");
+
+    await this.db
+      .update(sellerProfiles)
+      .set({
+        verificationStatus: "rejected",
+        updatedAt: new Date(),
+      })
+      .where(eq(sellerProfiles.id, sellerId));
+
+    await this.notificationsService.create({
+      userId: seller.userId,
+      type: "verification_rejected",
+      title: "Verification rejected",
+      body: `Your farm verification was rejected. Reason: ${reason}`,
+      data: { sellerId, reason },
+    });
+
+    return { id: sellerId, verificationStatus: "rejected" };
+  }
+
+  // ==================== Broadcast Notifications ====================
+
+  async broadcast(
+    title: string,
+    body: string,
+    audience: "all" | "buyers" | "sellers" | "verified_sellers",
+  ) {
+    let userRows: Array<{ id: string }>;
+
+    if (audience === "buyers") {
+      userRows = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.role, "buyer"));
+    } else if (audience === "sellers") {
+      userRows = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.role, "seller"));
+    } else if (audience === "verified_sellers") {
+      userRows = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .innerJoin(sellerProfiles, eq(sellerProfiles.userId, users.id))
+        .where(eq(sellerProfiles.verificationStatus, "verified"));
+    } else {
+      userRows = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(ne(users.role, "admin"));
+    }
+
+    // Create notification for each recipient
+    await Promise.all(
+      userRows.map((u) =>
+        this.notificationsService.create({
+          userId: u.id,
+          type: "broadcast",
+          title,
+          body,
+        }),
+      ),
+    );
+
+    return { sent: userRows.length, audience };
+  }
+
+  // ==================== Dispute Resolution ====================
+
+  async listDisputes() {
+    const rows = await this.db
+      .select({
+        id: orders.id,
+        orderNumber: orders.orderNumber,
+        buyerId: orders.buyerId,
+        sellerId: orders.sellerId,
+        itemPrice: orders.itemPrice,
+        totalAmount: orders.totalAmount,
+        status: orders.status,
+        escrowStatus: orders.escrowStatus,
+        buyerNotes: orders.buyerNotes,
+        createdAt: orders.createdAt,
+        updatedAt: orders.updatedAt,
+        listingId: orders.listingId,
+      })
+      .from(orders)
+      .where(eq(orders.escrowStatus, "disputed"))
+      .orderBy(desc(orders.updatedAt));
+    return { data: rows };
+  }
+
+  async resolveDispute(
+    orderId: string,
+    adminId: string,
+    decision: "release" | "refund",
+    notes: string,
+  ) {
+    return this.ordersService.resolveDispute(orderId, adminId, decision, notes);
+  }
+
+  // ==================== Demo Reset ====================
+
+  /**
+   * Wipes user data and re-seeds the mock-trial fixtures. Admin-only.
+   * Runs the same script as `pnpm demo:reset` via a child process so the
+   * running API process itself is untouched.
+   */
+  async runDemoReset() {
+    const apiRoot = path.resolve(__dirname, "..", "..", "..");
+    const cmd = `cd "${apiRoot}" && pnpm run db:seed && pnpm exec tsx src/database/seed-demo/index.ts`;
+    try {
+      const { stdout } = await execAsync(cmd, {
+        env: { ...process.env },
+        timeout: 60_000,
+      });
+      return {
+        message: "Demo data reset complete",
+        output: stdout.split("\n").slice(-20).join("\n"),
+      };
+    } catch (err: any) {
+      throw new BadRequestException(
+        `Demo reset failed: ${err.message || "unknown error"}`,
+      );
+    }
   }
 }
