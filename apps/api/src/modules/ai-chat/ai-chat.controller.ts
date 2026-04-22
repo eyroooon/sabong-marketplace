@@ -121,4 +121,42 @@ export class AiChatController {
 
     res.end();
   }
+
+  @Post("generate-description")
+  @HttpCode(200)
+  async generateDescription(
+    @Body()
+    body: {
+      title: string;
+      breed?: string;
+      bloodline?: string;
+      category?: string;
+      ageMonths?: number;
+      weightKg?: string | number;
+      color?: string;
+      legColor?: string;
+      fightingStyle?: string;
+      sireInfo?: string;
+      damInfo?: string;
+      price?: string | number;
+    },
+    @Req() req: Request,
+  ) {
+    const { userId, role } = this.extractUser(req);
+    const ip = this.getClientIp(req);
+    const check = this.rateLimiter.check(userId, role, ip);
+    if (!check.allowed) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          error: "Too Many Requests",
+          message: `Daily AI quota reached (${check.limit} generations).`,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    this.rateLimiter.increment(userId, ip);
+    const description = await this.aiChatService.generateListingDescription(body);
+    return { description };
+  }
 }

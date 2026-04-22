@@ -7,6 +7,7 @@ import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import { formatPHP } from "@sabong/shared";
 import Link from "next/link";
 import { ReleaseCelebration } from "@/components/orders/release-celebration";
+import { useToast } from "@/components/toast/notification-toast";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   gcash: "GCash",
@@ -70,6 +71,7 @@ export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { user, accessToken } = useAuth();
+  const { show: showToast } = useToast();
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -188,6 +190,11 @@ export default function OrderDetailPage() {
       // Trigger celebration before refetching — amount is final known total
       setCelebrationAmount(Number(order.totalAmount));
       setShowCelebration(true);
+      showToast({
+        title: "Seller was notified",
+        body: "Mang Tomas got your payment release",
+        accent: "green",
+      });
       await fetchOrder();
     } catch (err: any) {
       alert(err.message || "Failed to accept delivery");
@@ -237,6 +244,11 @@ export default function OrderDetailPage() {
       setShowDisputeModal(false);
       setDisputeReason("");
       setDisputePhotos("");
+      showToast({
+        title: "Admin notified",
+        body: "Your dispute is in review",
+        accent: "amber",
+      });
     } catch (err: any) {
       alert(err.message || "Failed to open dispute");
     } finally {

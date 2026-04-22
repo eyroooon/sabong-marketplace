@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatPHP } from "@sabong/shared";
+import { VerifiedBadge } from "@/components/verified-badge";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 // Strip /api suffix if present so we get the base host for static assets
@@ -115,6 +116,12 @@ export function ListingCard({ listing }: ListingCardProps) {
         <p className="mt-2 text-xs text-muted-foreground">
           {listing.locationCity}, {listing.locationProvince}
         </p>
+        {listing.sellerName && (
+          <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="truncate">{listing.sellerName}</span>
+            {listing.sellerVerified && <VerifiedBadge size="sm" />}
+          </p>
+        )}
       </div>
     </Link>
   );

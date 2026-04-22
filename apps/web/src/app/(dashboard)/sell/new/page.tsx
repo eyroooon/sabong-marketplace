@@ -11,10 +11,45 @@ export default function CreateListingPage() {
   const { accessToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [generatingDesc, setGeneratingDesc] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+
+  async function generateDescription() {
+    if (!form.title) {
+      setError("Add a title first so the AI has something to work with.");
+      return;
+    }
+    setGeneratingDesc(true);
+    setError("");
+    try {
+      const res = await apiPost<{ description: string }>(
+        "/ai-chat/generate-description",
+        {
+          title: form.title,
+          breed: form.breed,
+          bloodline: form.bloodline,
+          category: form.category,
+          ageMonths: form.ageMonths ? Number(form.ageMonths) : undefined,
+          weightKg: form.weightKg,
+          color: form.color,
+          legColor: form.legColor,
+          fightingStyle: form.fightingStyle,
+          sireInfo: form.sireInfo,
+          damInfo: form.damInfo,
+          price: form.price,
+        },
+        accessToken ?? undefined,
+      );
+      updateField("description", res.description);
+    } catch (e: any) {
+      setError(e?.message || "AI couldn't generate a description.");
+    } finally {
+      setGeneratingDesc(false);
+    }
+  }
 
   const [form, setForm] = useState({
     title: "",
@@ -223,11 +258,31 @@ export default function CreateListingPage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Description *</label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="block text-sm font-medium">Description *</label>
+                <button
+                  type="button"
+                  onClick={generateDescription}
+                  disabled={generatingDesc || !form.title}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-gradient-to-r from-amber-50 to-red-50 px-3 py-1 text-xs font-semibold text-amber-800 hover:from-amber-100 hover:to-red-100 disabled:opacity-50"
+                >
+                  {generatingDesc ? (
+                    <>
+                      <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <span>✨</span>
+                      Write with AI
+                    </>
+                  )}
+                </button>
+              </div>
               <textarea
                 value={form.description}
                 onChange={(e) => updateField("description", e.target.value)}
-                placeholder="Describe your gamefowl in detail..."
+                placeholder="Describe your gamefowl in detail... or let AI write it for you."
                 rows={4}
                 className="w-full rounded-lg border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 required

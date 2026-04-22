@@ -169,4 +169,64 @@ BloodlinePH has a TikTok-style video feed where users can:
       }
     }
   }
+
+  /**
+   * Generates a compelling listing description in Taglish based on
+   * structured attributes the seller has already filled in.
+   * Returns the raw text ready to be pasted into the description field.
+   */
+  async generateListingDescription(input: {
+    title: string;
+    breed?: string;
+    bloodline?: string;
+    category?: string;
+    ageMonths?: number;
+    weightKg?: string | number;
+    color?: string;
+    legColor?: string;
+    fightingStyle?: string;
+    sireInfo?: string;
+    damInfo?: string;
+    price?: string | number;
+  }): Promise<string> {
+    if (!this.client) {
+      // Graceful fallback if no API key configured — deterministic template.
+      const bits: string[] = [];
+      if (input.breed) bits.push(`Pure ${input.breed}`);
+      if (input.bloodline) bits.push(`${input.bloodline} bloodline`);
+      if (input.ageMonths) bits.push(`${input.ageMonths} months old`);
+      if (input.color) bits.push(input.color);
+      return `${bits.join(" · ")}. Malusog, training-ready. Interested buyers, PM lang! Shipping available nationwide.`;
+    }
+
+    const prompt = `Generate a compelling gamefowl listing description in natural Taglish (mix of Filipino + English as Filipino sabungeros actually speak).
+
+Listing details:
+- Title: ${input.title}
+- Category: ${input.category ?? "unknown"}
+- Breed: ${input.breed ?? "—"}
+- Bloodline: ${input.bloodline ?? "—"}
+- Age: ${input.ageMonths ? `${input.ageMonths} months` : "—"}
+- Weight: ${input.weightKg ? `${input.weightKg} kg` : "—"}
+- Color: ${input.color ?? "—"}
+- Leg color: ${input.legColor ?? "—"}
+- Fighting style: ${input.fightingStyle ?? "—"}
+- Sire: ${input.sireInfo ?? "—"}
+- Dam: ${input.damInfo ?? "—"}
+- Price: ${input.price ? `₱${input.price}` : "—"}
+
+Write 2-3 short paragraphs (total ~80-120 words). Use Taglish naturally. Be authentic and avoid AI-sounding phrases. Lead with the bloodline/breed's reputation, mention condition, training/readiness, and end with a clear next step for interested buyers. No markdown, no bullet lists, no emoji-spam (one or two is fine).`;
+
+    const response = await this.client.messages.create({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 400,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const content = response.content[0];
+    if (content.type === "text") {
+      return content.text.trim();
+    }
+    return "Unable to generate description. Please write your own.";
+  }
 }

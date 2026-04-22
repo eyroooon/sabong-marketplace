@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { ChatWidget } from "@/components/ai-chat/chat-widget";
 import { PWARegister } from "@/components/pwa-register";
+import { ToastProvider } from "@/components/toast/toast-provider";
 import { I18nProvider } from "@/lib/i18n/context";
 import "./globals.css";
 
@@ -112,6 +113,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-background text-foreground antialiased">
+        <ToastProvider />
         <AuthProvider>
           <I18nProvider>
             {children}

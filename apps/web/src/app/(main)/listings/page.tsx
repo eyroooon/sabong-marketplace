@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ListingCard } from "@/components/listings/listing-card";
+import { BreederOfMonth } from "@/components/listings/breeder-of-month";
 import { apiGet } from "@/lib/api";
 import { CATEGORIES, BREEDS } from "@sabong/shared";
 import { Search, X } from "lucide-react";
@@ -90,6 +91,8 @@ function ListingsContent() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
+      <BreederOfMonth />
+
       {/* Search bar */}
       <form
         onSubmit={(e) => {

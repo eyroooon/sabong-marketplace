@@ -6,6 +6,8 @@ import Link from "next/link";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatPHP } from "@sabong/shared";
+import { VerifiedBadge } from "@/components/verified-badge";
+import { AuctionCountdown } from "@/components/listings/auction-countdown";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const API_HOST = API_URL.replace(/\/api\/?$/, "");
@@ -290,6 +292,9 @@ export default function ListingDetailPage() {
         {/* Right: Price & Actions */}
         <div>
           <div className="sticky top-20 lg:top-20 space-y-4">
+            {listing.priceType === "auction" && (
+              <AuctionCountdown />
+            )}
             <div className="rounded-xl border border-border p-6">
               <p className="text-3xl font-bold text-primary">
                 {formatPHP(Number(listing.price))}
@@ -297,6 +302,11 @@ export default function ListingDetailPage() {
               {listing.priceType === "negotiable" && (
                 <p className="text-sm text-muted-foreground">
                   Price is negotiable
+                </p>
+              )}
+              {listing.priceType === "auction" && (
+                <p className="text-sm text-muted-foreground">
+                  Starting bid · Place your bid to enter
                 </p>
               )}
 
@@ -378,7 +388,12 @@ export default function ListingDetailPage() {
                     {listing.seller.farmName?.charAt(0)}
                   </div>
                   <div>
-                    <p className="font-semibold">{listing.seller.farmName}</p>
+                    <p className="flex items-center gap-1.5 font-semibold">
+                      <span className="truncate">{listing.seller.farmName}</span>
+                      {listing.seller?.verificationStatus === "verified" && (
+                        <VerifiedBadge size="sm" />
+                      )}
+                    </p>
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       {listing.seller.verificationStatus === "verified" && (
                         <span className="text-green-600">Verified</span>

@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { apiGet } from "@/lib/api";
+import { VerifiedBadge } from "@/components/verified-badge";
+import { TrustScore } from "@/components/sellers/trust-score";
 
 function StarDisplay({ value, size = "sm" }: { value: number; size?: "sm" | "lg" }) {
   const starSize = size === "lg" ? "text-xl" : "text-base";
@@ -18,6 +20,68 @@ function StarDisplay({ value, size = "sm" }: { value: number; size?: "sm" | "lg"
         </span>
       ))}
     </span>
+  );
+}
+
+function SalesSparkline({
+  data,
+  labels = ["Nov", "Dec", "Jan", "Feb", "Mar", "Apr"],
+}: {
+  data: number[];
+  labels?: string[];
+}) {
+  const width = 160;
+  const height = 40;
+  const padX = 4;
+  const padY = 4;
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data);
+  const range = Math.max(max - min, 1);
+
+  const points = data.map((v, i) => {
+    const x = padX + (i * (width - padX * 2)) / Math.max(data.length - 1, 1);
+    const y = height - padY - ((v - min) / range) * (height - padY * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  const lastIdx = data.length - 1;
+  const lastPoint = points[lastIdx]?.split(",").map(Number) ?? [0, 0];
+
+  return (
+    <div className="flex items-center gap-3">
+      <div>
+        <p className="text-xs font-medium text-muted-foreground">Sales trend</p>
+        <p className="text-[10px] text-muted-foreground">
+          {labels[0]}&mdash;{labels[labels.length - 1]}
+        </p>
+      </div>
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        aria-label="Sales trend sparkline"
+        className="overflow-visible"
+      >
+        <polyline
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-primary"
+          points={points.join(" ")}
+        />
+        <circle
+          cx={lastPoint[0]}
+          cy={lastPoint[1]}
+          r={2.5}
+          className="fill-primary"
+        />
+      </svg>
+      <span className="text-sm font-semibold text-primary">
+        +{data[lastIdx] - data[0]}
+      </span>
+    </div>
   );
 }
 
@@ -114,6 +178,7 @@ export default function SellerProfilePage() {
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">{seller.farmName}</h1>
+              {seller.verificationStatus === "verified" && <VerifiedBadge size="md" />}
               {seller.verificationStatus === "verified" && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
                   <svg
@@ -172,8 +237,24 @@ export default function SellerProfilePage() {
         )}
       </div>
 
+      {/* Trust Score */}
+      <div className="mt-6">
+        <TrustScore
+          verificationStatus={seller.verificationStatus}
+          totalSales={seller.totalSales}
+          avgRating={seller.avgRating}
+          responseRate={seller.responseRate}
+          responseTime={seller.responseTime}
+        />
+      </div>
+
+      {/* Sales trend sparkline */}
+      <div className="mt-4 rounded-xl border border-border p-4">
+        <SalesSparkline data={[3, 5, 4, 8, 12, 15]} />
+      </div>
+
       {/* Stats */}
-      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="rounded-xl border border-border p-4 text-center">
           <p className="text-2xl font-bold">{seller.totalSales || 0}</p>
           <p className="text-xs text-muted-foreground">Total Sales</p>

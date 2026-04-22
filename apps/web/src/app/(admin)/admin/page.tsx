@@ -17,6 +17,10 @@ import {
   DollarSign,
 } from "lucide-react";
 import { LiveActivityTicker } from "@/components/admin/LiveActivityTicker";
+import { GMVChart } from "@/components/admin/GMVChart";
+import { TakeRateCard } from "@/components/admin/TakeRateCard";
+import { CohortRetention } from "@/components/admin/CohortRetention";
+import { LTVCACProjection } from "@/components/admin/LTVCACProjection";
 
 /* ---------- Types ---------- */
 
@@ -250,6 +254,19 @@ export default function AdminDashboardPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* ── Business Metrics ── */}
+      <div>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+          Business Metrics
+        </h3>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <GMVChart />
+          <TakeRateCard />
+          <CohortRetention />
+          <LTVCACProjection />
+        </div>
       </div>
 
       {/* ── Middle: Recent Orders + Activity ── */}
