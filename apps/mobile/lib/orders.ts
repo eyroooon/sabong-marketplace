@@ -71,6 +71,10 @@ export interface Order {
   completedAt?: string | null;
   cancelledAt?: string | null;
   cancelReason?: string | null;
+
+  // Escrow — drives the 'safe hold' UX
+  escrowStatus?: "none" | "held" | "released" | "refunded" | "disputed";
+  escrowReleasedAt?: string | null;
 }
 
 export interface CreateOrderInput {
@@ -101,6 +105,36 @@ export function useCreateOrder() {
     mutationFn: (input) => apiPost<Order>("/orders", input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
+/** Buyer → POST /orders/:id/accept-delivery → releases escrow + completes. */
+export function useAcceptDelivery(orderId: string) {
+  const qc = useQueryClient();
+  return useMutation<{ status: string }, Error, void>({
+    mutationFn: () =>
+      apiPost<{ status: string }>(`/orders/${orderId}/accept-delivery`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["orders", orderId] });
+    },
+  });
+}
+
+/** Buyer → POST /orders/:id/dispute with reason + photos → escrow=disputed. */
+export function useDisputeOrder(orderId: string) {
+  const qc = useQueryClient();
+  return useMutation<
+    { escrowStatus: string },
+    Error,
+    { reason: string; photos?: string[] }
+  >({
+    mutationFn: (input) =>
+      apiPost<{ escrowStatus: string }>(`/orders/${orderId}/dispute`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["orders", orderId] });
     },
   });
 }

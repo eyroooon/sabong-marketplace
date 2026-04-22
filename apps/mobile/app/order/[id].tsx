@@ -1,12 +1,14 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   Alert,
 } from "react-native";
@@ -19,6 +21,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import {
   useOrder,
   usePayOrder,
+  useAcceptDelivery,
+  useDisputeOrder,
   formatOrderPrice,
   ORDER_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -60,6 +64,10 @@ export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: order, isLoading, error } = useOrder(id);
   const pay = usePayOrder(id!);
+  const accept = useAcceptDelivery(id!);
+  const dispute = useDisputeOrder(id!);
+  const [disputeOpen, setDisputeOpen] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
 
   if (isLoading) {
     return (
@@ -81,6 +89,47 @@ export default function OrderDetailScreen() {
       </SafeAreaView>
     );
   }
+
+  const handleAccept = () => {
+    Alert.alert(
+      "Accept delivery",
+      `Release ${formatOrderPrice(order?.totalAmount ?? "0")} to the seller?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Release",
+          style: "default",
+          onPress: () =>
+            accept.mutate(undefined, {
+              onError: (err) =>
+                Alert.alert("Couldn't accept", err.message),
+            }),
+        },
+      ],
+    );
+  };
+
+  const handleSubmitDispute = () => {
+    const reason = disputeReason.trim();
+    if (!reason) {
+      Alert.alert("Reason required", "Please describe what happened.");
+      return;
+    }
+    dispute.mutate(
+      { reason },
+      {
+        onSuccess: () => {
+          setDisputeOpen(false);
+          setDisputeReason("");
+          Alert.alert(
+            "Dispute submitted",
+            "An admin will review your report within 24 hours.",
+          );
+        },
+        onError: (err) => Alert.alert("Failed to open dispute", err.message),
+      },
+    );
+  };
 
   const handlePay = () => {
     if (!order.paymentMethod) return;
@@ -265,6 +314,76 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
+        {/* Escrow banner */}
+        {order.escrowStatus && order.escrowStatus !== "none" ? (
+          <View
+            style={[
+              styles.escrowCard,
+              order.escrowStatus === "held" && styles.escrowHeld,
+              order.escrowStatus === "released" && styles.escrowReleased,
+              order.escrowStatus === "disputed" && styles.escrowDisputed,
+              order.escrowStatus === "refunded" && styles.escrowRefunded,
+            ]}
+          >
+            <View style={styles.escrowIcon}>
+              <Ionicons
+                name={
+                  order.escrowStatus === "released"
+                    ? "checkmark-circle"
+                    : order.escrowStatus === "disputed"
+                      ? "alert-circle"
+                      : order.escrowStatus === "refunded"
+                        ? "return-down-back"
+                        : "lock-closed"
+                }
+                size={18}
+                color={
+                  order.escrowStatus === "held"
+                    ? "#B45309"
+                    : order.escrowStatus === "released"
+                      ? "#047857"
+                      : order.escrowStatus === "disputed"
+                        ? colors.destructive
+                        : colors.muted
+                }
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.escrowTitle}>
+                {order.escrowStatus === "held"
+                  ? `Escrow: ${formatOrderPrice(order.totalAmount)} held safely`
+                  : order.escrowStatus === "released"
+                    ? `Payment released — ${formatOrderPrice(order.totalAmount)}`
+                    : order.escrowStatus === "disputed"
+                      ? "Under dispute — admin is reviewing"
+                      : "Payment refunded"}
+              </Text>
+              <Text style={styles.escrowSub}>
+                {order.escrowStatus === "held"
+                  ? "Ang bayad mo ay safe hanggang matanggap mo ang manok."
+                  : order.escrowStatus === "released"
+                    ? "Transaction complete."
+                    : order.escrowStatus === "disputed"
+                      ? "A decision will be made within 24 hours."
+                      : "Funds were returned."}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Dispute context (buyer's note) when disputed */}
+        {order.escrowStatus === "disputed" && order.buyerNotes ? (
+          <View style={styles.disputeContextCard}>
+            <View style={styles.sectionHeaderRow}>
+              <Ionicons name="warning" size={16} color={colors.destructive} />
+              <Text style={[styles.sectionLabel, { color: colors.destructive }]}>
+                Dispute Details
+              </Text>
+            </View>
+            <Text style={styles.address}>{order.buyerNotes}</Text>
+          </View>
+        ) : null}
+
         {/* Price breakdown */}
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Price Breakdown</Text>
@@ -377,7 +496,115 @@ export default function OrderDetailScreen() {
             </Button>
           </View>
         </SafeAreaView>
+      ) : order.status === "delivered" && order.escrowStatus === "held" ? (
+        <SafeAreaView edges={["bottom"]} style={styles.actionBarWrap}>
+          <View style={styles.actionBarInner}>
+            <Pressable
+              onPress={() => setDisputeOpen(true)}
+              disabled={dispute.isPending}
+              style={({ pressed }) => [
+                styles.disputeBtn,
+                pressed && { opacity: 0.75 },
+                dispute.isPending && { opacity: 0.5 },
+              ]}
+            >
+              <Ionicons
+                name="alert-circle-outline"
+                size={16}
+                color={colors.destructive}
+              />
+              <Text style={styles.disputeBtnText}>Report</Text>
+            </Pressable>
+            <Pressable
+              onPress={handleAccept}
+              disabled={accept.isPending}
+              style={({ pressed }) => [
+                styles.acceptBtn,
+                pressed && { opacity: 0.85 },
+                accept.isPending && { opacity: 0.5 },
+              ]}
+            >
+              {accept.isPending ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={18}
+                    color={colors.white}
+                  />
+                  <Text style={styles.acceptBtnText}>
+                    Accept &amp; Release {formatOrderPrice(order.totalAmount)}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </SafeAreaView>
       ) : null}
+
+      {/* Dispute modal */}
+      <Modal
+        visible={disputeOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDisputeOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Report a Problem</Text>
+              <Pressable
+                onPress={() => setDisputeOpen(false)}
+                hitSlop={10}
+              >
+                <Ionicons name="close" size={22} color={colors.muted} />
+              </Pressable>
+            </View>
+            <Text style={styles.modalHelp}>
+              Escrow stays held until an admin reviews. Usually within 24 hours.
+            </Text>
+            <TextInput
+              value={disputeReason}
+              onChangeText={setDisputeReason}
+              placeholder="What happened? e.g. bird arrived injured, not as described…"
+              placeholderTextColor={colors.muted}
+              multiline
+              numberOfLines={4}
+              maxLength={1000}
+              style={styles.modalInput}
+            />
+            <View style={styles.modalActions}>
+              <Pressable
+                onPress={() => setDisputeOpen(false)}
+                style={({ pressed }) => [
+                  styles.modalCancel,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSubmitDispute}
+                disabled={dispute.isPending || !disputeReason.trim()}
+                style={({ pressed }) => [
+                  styles.modalSubmit,
+                  (dispute.isPending || !disputeReason.trim()) && {
+                    opacity: 0.5,
+                  },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                {dispute.isPending ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <Text style={styles.modalSubmitText}>Submit Dispute</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -769,5 +996,168 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.black,
     color: colors.primary,
     marginTop: 2,
+  },
+
+  // Escrow banner
+  escrowCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: spacing[4],
+    borderRadius: radii.xl,
+    marginHorizontal: spacing[3],
+    marginTop: spacing[3],
+    borderWidth: 1,
+  },
+  escrowHeld: {
+    backgroundColor: "#FEF3C7",
+    borderColor: "#FCD34D",
+  },
+  escrowReleased: {
+    backgroundColor: "#D1FAE5",
+    borderColor: "#6EE7B7",
+  },
+  escrowDisputed: {
+    backgroundColor: "#FEE2E2",
+    borderColor: "#FCA5A5",
+  },
+  escrowRefunded: {
+    backgroundColor: "#F3F4F6",
+    borderColor: "#D1D5DB",
+  },
+  escrowIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.7)",
+  },
+  escrowTitle: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.foreground,
+  },
+  escrowSub: {
+    fontSize: fontSize.xs,
+    color: colors.muted,
+    marginTop: 3,
+  },
+
+  // Dispute context card
+  disputeContextCard: {
+    padding: spacing[4],
+    borderRadius: radii.xl,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    marginHorizontal: spacing[3],
+    marginTop: spacing[3],
+  },
+
+  // Accept / Dispute sticky bar
+  acceptBtn: {
+    flex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: colors.emerald,
+    paddingVertical: 14,
+    borderRadius: radii.full,
+  },
+  acceptBtnText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.black,
+    color: colors.white,
+  },
+  disputeBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 14,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    backgroundColor: colors.white,
+  },
+  disputeBtnText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.bold,
+    color: colors.destructive,
+  },
+
+  // Dispute modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing[4],
+    paddingBottom: spacing[6],
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  modalTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.black,
+    color: colors.foreground,
+  },
+  modalHelp: {
+    fontSize: fontSize.sm,
+    color: colors.muted,
+    lineHeight: 20,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    padding: 12,
+    minHeight: 100,
+    textAlignVertical: "top",
+    fontSize: fontSize.base,
+    color: colors.foreground,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+  },
+  modalCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCancelText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.foreground,
+  },
+  modalSubmit: {
+    flex: 1.5,
+    paddingVertical: 12,
+    borderRadius: radii.full,
+    backgroundColor: colors.destructive,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalSubmitText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.black,
+    color: colors.white,
   },
 });
