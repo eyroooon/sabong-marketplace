@@ -21,11 +21,19 @@ import {
   ChevronDown,
   LogOut,
   TrendingUp,
+  BadgeCheck,
+  ShieldAlert,
+  Megaphone,
+  RefreshCw,
 } from "lucide-react";
+import { apiPost } from "@/lib/api";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/analytics", label: "Analytics", icon: TrendingUp },
+  { href: "/admin/verifications", label: "Verifications", icon: BadgeCheck },
+  { href: "/admin/disputes", label: "Disputes", icon: ShieldAlert },
+  { href: "/admin/broadcast", label: "Broadcast", icon: Megaphone },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/listings", label: "Listings", icon: Package },
   { href: "/admin/orders", label: "Orders", icon: ShoppingCart },
@@ -50,9 +58,32 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { user, logout, accessToken } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  const handleDemoReset = async () => {
+    if (!accessToken || resetting) return;
+    if (
+      !confirm(
+        "Re-seed demo data? This will wipe all users, listings, orders, and reviews and restore the demo fixtures.",
+      )
+    )
+      return;
+    setResetting(true);
+    try {
+      await apiPost("/admin/demo-reset", {}, accessToken);
+      alert("Demo data reset. You may need to log in again.");
+      // Cookie is invalidated because admin user id changed — log out + go home
+      logout();
+      router.push("/login");
+    } catch (err: any) {
+      alert(err?.message || "Demo reset failed");
+    } finally {
+      setResetting(false);
+    }
+  };
 
   useEffect(() => {
     if (user && user.role !== "admin") {
@@ -166,6 +197,16 @@ export default function AdminLayout({
 
         {/* Sidebar bottom */}
         <div className="border-t border-gray-700 p-3">
+          <button
+            onClick={handleDemoReset}
+            disabled={resetting}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-amber-300 transition-colors hover:bg-amber-500/10 hover:text-amber-200 disabled:opacity-50"
+          >
+            <RefreshCw
+              className={cn("h-4 w-4", resetting && "animate-spin")}
+            />
+            {resetting ? "Resetting…" : "Reset demo data"}
+          </button>
           <Link
             href="/dashboard"
             className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-white/5 hover:text-white"
