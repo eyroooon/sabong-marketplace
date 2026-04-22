@@ -16,6 +16,7 @@ import {
   UserPlus,
   DollarSign,
 } from "lucide-react";
+import { LiveActivityTicker } from "@/components/admin/LiveActivityTicker";
 
 /* ---------- Types ---------- */
 
@@ -208,6 +209,9 @@ export default function AdminDashboardPage() {
           Welcome back. Here is what is happening on BloodlinePH today.
         </p>
       </div>
+
+      {/* ── Live activity ticker ── */}
+      <LiveActivityTicker />
 
       {/* ── Stat Cards ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">

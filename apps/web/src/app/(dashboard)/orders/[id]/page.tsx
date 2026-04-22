@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { apiGet, apiPatch, apiPost } from "@/lib/api";
 import { formatPHP } from "@sabong/shared";
 import Link from "next/link";
+import { ReleaseCelebration } from "@/components/orders/release-celebration";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   gcash: "GCash",
@@ -96,6 +97,10 @@ export default function OrderDetailPage() {
   const [responseText, setResponseText] = useState("");
   const [responseSubmitting, setResponseSubmitting] = useState(false);
 
+  // Release celebration overlay
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebrationAmount, setCelebrationAmount] = useState(0);
+
   // Review state
   const [existingReview, setExistingReview] = useState<any>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -180,6 +185,9 @@ export default function OrderDetailPage() {
     setActionLoading(true);
     try {
       await apiPost(`/orders/${id}/accept-delivery`, {}, accessToken);
+      // Trigger celebration before refetching — amount is final known total
+      setCelebrationAmount(Number(order.totalAmount));
+      setShowCelebration(true);
       await fetchOrder();
     } catch (err: any) {
       alert(err.message || "Failed to accept delivery");
@@ -316,6 +324,13 @@ export default function OrderDetailPage() {
 
   return (
     <div>
+      {showCelebration && (
+        <ReleaseCelebration
+          amount={celebrationAmount}
+          onClose={() => setShowCelebration(false)}
+        />
+      )}
+
       <Link href="/orders" className="mb-4 inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
         &larr; Back to Orders
       </Link>

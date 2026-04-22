@@ -26,6 +26,7 @@ import {
 import { StatCounter } from "@/components/landing/stat-counter";
 import { Faq } from "@/components/landing/faq";
 import { WaitlistForm } from "@/components/landing/waitlist-form";
+import { LiveCounter } from "@/components/landing/live-counter";
 import {
   PhoneMockup,
   ScreenFeed,
@@ -125,6 +126,9 @@ export default function HomePage() {
               Posts Won't Disappear
             </span>
           </div>
+
+          {/* Live counter — ticks up to show platform activity */}
+          <LiveCounter />
 
           {/* App mockup preview cards */}
           <div className="mt-12 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4 md:mt-16 md:gap-6">
