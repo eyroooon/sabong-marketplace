@@ -3,8 +3,9 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-import { apiPost, apiDelete } from "@/lib/api";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { HeartAnimation } from "./heart-animation";
+import { CommentPanel } from "./comment-panel";
 
 interface VideoCardProps {
   video: {
@@ -40,13 +41,36 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") || "http:/
 
 export function VideoCard({ video, isActive }: VideoCardProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { accessToken, isAuthenticated } = useAuth();
+  const { accessToken, isAuthenticated, user } = useAuth();
   const [isPlaying, setIsPlaying] = useState(false);
   const [liked, setLiked] = useState(video.isLiked || false);
   const [likeCount, setLikeCount] = useState(video.likeCount);
+  const [commentCount, setCommentCount] = useState(video.commentCount);
   const [showHeart, setShowHeart] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [following, setFollowing] = useState(false);
+  const [followBusy, setFollowBusy] = useState(false);
+  const [shareTip, setShareTip] = useState(false);
   const lastTapRef = useRef(0);
+  const isOwnVideo = user?.id === video.user.id;
+
+  // Check follow status when logged-in + not viewing own video
+  useEffect(() => {
+    if (!accessToken || isOwnVideo) return;
+    let cancelled = false;
+    apiGet<{ following: boolean }>(
+      `/users/${video.user.id}/follow/status`,
+      accessToken,
+    )
+      .then((res) => {
+        if (!cancelled) setFollowing(!!res.following);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, video.user.id, isOwnVideo]);
 
   // Autoplay/pause based on isActive
   useEffect(() => {
@@ -116,6 +140,51 @@ export function VideoCard({ video, isActive }: VideoCardProps) {
     }
   }
 
+  async function handleFollow(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!accessToken || isOwnVideo || followBusy) return;
+    setFollowBusy(true);
+    const wasFollowing = following;
+    setFollowing(!wasFollowing);
+    try {
+      if (wasFollowing) {
+        await apiDelete(`/users/${video.user.id}/follow`, accessToken);
+      } else {
+        await apiPost(`/users/${video.user.id}/follow`, {}, accessToken);
+      }
+    } catch {
+      setFollowing(wasFollowing);
+    } finally {
+      setFollowBusy(false);
+    }
+  }
+
+  async function handleShare() {
+    const shareUrl = `${window.location.origin}/feed?v=${video.id}`;
+    // Fire-and-forget share count bump (endpoint is public)
+    apiPost(`/videos/${video.id}/share`, {}).catch(() => {});
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: video.caption.slice(0, 60),
+          url: shareUrl,
+        });
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareTip(true);
+        setTimeout(() => setShareTip(false), 1600);
+      }
+    } catch {
+      // share cancelled by user — ignore
+    }
+  }
+
+  function openComments(e: React.MouseEvent) {
+    e.stopPropagation();
+    setCommentsOpen(true);
+  }
+
   const videoSrc = video.videoUrl.startsWith("http")
     ? video.videoUrl
     : `${API_BASE}${video.videoUrl}`;
@@ -150,20 +219,53 @@ export function VideoCard({ video, isActive }: VideoCardProps) {
 
       {/* Right side action bar */}
       <div className="absolute bottom-32 right-3 flex flex-col items-center gap-5 z-20">
-        {/* User avatar */}
-        <Link href={`/sellers/${video.user.id}`} className="relative">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-white bg-primary text-sm font-bold text-white">
-            {video.user.avatarUrl ? (
-              <img
-                src={video.user.avatarUrl}
-                alt=""
-                className="h-full w-full rounded-full object-cover"
-              />
-            ) : (
-              video.user.firstName[0]
-            )}
-          </div>
-        </Link>
+        {/* User avatar + follow badge */}
+        <div className="relative">
+          <Link href={`/sellers/${video.user.id}`}>
+            <div className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-white bg-primary text-sm font-bold text-white">
+              {video.user.avatarUrl ? (
+                <img
+                  src={video.user.avatarUrl}
+                  alt=""
+                  className="h-full w-full rounded-full object-cover"
+                />
+              ) : (
+                video.user.firstName[0]
+              )}
+            </div>
+          </Link>
+          {isAuthenticated() && !isOwnVideo && !following && (
+            <button
+              onClick={handleFollow}
+              disabled={followBusy}
+              aria-label="Follow"
+              className="absolute -bottom-1 left-1/2 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600 disabled:opacity-60"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-3 w-3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={3}
+              >
+                <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          )}
+          {isAuthenticated() && !isOwnVideo && following && (
+            <button
+              onClick={handleFollow}
+              disabled={followBusy}
+              aria-label="Unfollow"
+              title="Following — tap to unfollow"
+              className="absolute -bottom-1 left-1/2 flex h-5 w-5 -translate-x-1/2 items-center justify-center rounded-full bg-white text-red-500 shadow hover:bg-gray-100 disabled:opacity-60"
+            >
+              <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor">
+                <path d="M20.285 2l-11.285 11.567-5.286-5.011-3.714 3.716 9 8.728 15-15.285z" />
+              </svg>
+            </button>
+          )}
+        </div>
 
         {/* Like */}
         <button onClick={handleLike} className="flex flex-col items-center">
@@ -179,21 +281,42 @@ export function VideoCard({ video, isActive }: VideoCardProps) {
         </button>
 
         {/* Comments */}
-        <div className="flex flex-col items-center">
+        <button
+          onClick={openComments}
+          className="flex flex-col items-center"
+          aria-label="Open comments"
+        >
           <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z" />
           </svg>
-          <span className="mt-1 text-xs font-semibold text-white">{video.commentCount}</span>
-        </div>
+          <span className="mt-1 text-xs font-semibold text-white">{commentCount}</span>
+        </button>
 
         {/* Share */}
-        <button className="flex flex-col items-center">
+        <button
+          onClick={handleShare}
+          className="relative flex flex-col items-center"
+          aria-label="Share"
+        >
           <svg className="h-8 w-8 text-white" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
           </svg>
           <span className="mt-1 text-xs font-semibold text-white">Share</span>
+          {shareTip && (
+            <span className="absolute -left-24 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-white/95 px-3 py-1 text-xs font-semibold text-gray-900 shadow">
+              Link copied ✓
+            </span>
+          )}
         </button>
       </div>
+
+      {/* Comment panel */}
+      <CommentPanel
+        videoId={video.id}
+        open={commentsOpen}
+        onClose={() => setCommentsOpen(false)}
+        onCountChange={setCommentCount}
+      />
 
       {/* Bottom overlay */}
       <div className="absolute bottom-0 left-0 right-14 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pb-6">
@@ -213,20 +336,37 @@ export function VideoCard({ video, isActive }: VideoCardProps) {
           {video.caption}
         </p>
 
-        {/* Listing pill (if marketplace video) */}
+        {/* Shop This Bird CTA — appears on marketplace videos */}
         {video.listing && (
           <Link
-            href={`/listings/${video.listing.slug}`}
-            className="mt-2 inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 backdrop-blur-sm"
+            href={`/listings/${video.listing.slug}?ref=feed&v=${video.id}`}
+            className="mt-2 inline-flex w-full max-w-sm items-center gap-3 rounded-xl bg-white/15 px-3 py-2.5 backdrop-blur-md ring-1 ring-white/30 transition-transform hover:scale-[1.02] hover:bg-white/20 sm:w-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <svg className="h-4 w-4 text-white" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016A3.001 3.001 0 0021 9.349m-18 0V7.875A2.625 2.625 0 015.625 5.25h12.75A2.625 2.625 0 0121 7.875v1.474" />
-            </svg>
-            <span className="text-xs font-medium text-white">
-              {video.listing.title.slice(0, 30)}{video.listing.title.length > 30 ? "..." : ""}
-            </span>
-            <span className="text-xs font-bold text-primary-foreground">
+            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-400 to-red-500 text-white shadow">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"
+                />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-200">
+                Shop This Bird
+              </p>
+              <p className="truncate text-xs font-semibold text-white">
+                {video.listing.title}
+              </p>
+            </div>
+            <span className="flex-shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-bold text-red-600">
               {new Intl.NumberFormat("en-PH", {
                 style: "currency",
                 currency: "PHP",

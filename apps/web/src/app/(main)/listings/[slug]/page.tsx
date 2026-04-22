@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -18,6 +18,8 @@ function imageUrl(url: string): string {
 
 export default function ListingDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
+  const cameFromFeed = searchParams.get("ref") === "feed";
   const router = useRouter();
   const { accessToken, isAuthenticated, user } = useAuth();
   const [listing, setListing] = useState<any>(null);
@@ -127,6 +129,34 @@ export default function ListingDetailPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
+      {cameFromFeed && listing.seller && (
+        <Link
+          href="/feed"
+          className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+        >
+          <svg
+            className="h-3.5 w-3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M15.91 11.672a.375.375 0 010 .656l-5.603 3.113a.375.375 0 01-.557-.328V8.887c0-.286.307-.466.557-.327l5.603 3.112z"
+            />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <span>
+            Came from {listing.seller.farmName || "a seller"}'s video — back to Feed
+          </span>
+        </Link>
+      )}
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
         {/* Left: Images */}
         <div className="lg:col-span-2">
