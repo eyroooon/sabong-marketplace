@@ -5,6 +5,7 @@ import {
   boolean,
   timestamp,
   jsonb,
+  integer,
   index,
 } from "drizzle-orm/pg-core";
 
@@ -32,6 +33,10 @@ export const users = pgTable(
     barangay: varchar("barangay", { length: 100 }),
     addressLine: varchar("address_line", { length: 255 }),
     zipCode: varchar("zip_code", { length: 10 }),
+
+    // Social counters (denormalized for feed perf)
+    followersCount: integer("followers_count").default(0).notNull(),
+    followingCount: integer("following_count").default(0).notNull(),
 
     // Preferences
     language: varchar("language", { length: 5 }).default("fil").notNull(),

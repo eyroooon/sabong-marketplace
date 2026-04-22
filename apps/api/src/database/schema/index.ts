@@ -9,4 +9,6 @@ export * from "./notifications";
 export * from "./categories";
 export * from "./reports";
 export * from "./videos";
+export * from "./video-comments";
+export * from "./follows";
 export * from "./otp-codes";
