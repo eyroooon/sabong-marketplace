@@ -91,6 +91,11 @@ export default function OrderDetailPage() {
   const [disputeReason, setDisputeReason] = useState("");
   const [disputePhotos, setDisputePhotos] = useState("");
 
+  // Seller response to review
+  const [showResponseForm, setShowResponseForm] = useState(false);
+  const [responseText, setResponseText] = useState("");
+  const [responseSubmitting, setResponseSubmitting] = useState(false);
+
   // Review state
   const [existingReview, setExistingReview] = useState<any>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -108,6 +113,8 @@ export default function OrderDetailPage() {
   }, [id]);
 
   useEffect(() => {
+    // Fetch review for BOTH buyer (to show their posted review)
+    // and seller (to show + let them respond).
     if (
       order &&
       accessToken &&
@@ -178,6 +185,29 @@ export default function OrderDetailPage() {
       alert(err.message || "Failed to accept delivery");
     } finally {
       setActionLoading(false);
+    }
+  }
+
+  async function handleReviewResponse(e: React.FormEvent) {
+    e.preventDefault();
+    if (!accessToken || !existingReview || !responseText.trim()) return;
+    setResponseSubmitting(true);
+    try {
+      const updated = await apiPatch(
+        `/reviews/${existingReview.id}/respond`,
+        { response: responseText.trim() },
+        accessToken,
+      );
+      setExistingReview({
+        ...existingReview,
+        ...(updated as any),
+      });
+      setShowResponseForm(false);
+      setResponseText("");
+    } catch (err: any) {
+      alert(err.message || "Failed to send response");
+    } finally {
+      setResponseSubmitting(false);
     }
   }
 
@@ -273,7 +303,8 @@ export default function OrderDetailPage() {
   if (!order) return null;
 
   const isBuyer = order.buyerId === user?.id;
-  const isSeller = order.sellerId === user?.id;
+  // order.sellerId is the seller_profile id, not user id — compare via nested seller.userId
+  const isSeller = order.seller?.userId === user?.id;
   const currentStepIndex = STATUS_STEPS.findIndex((s) => s.key === order.status);
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
   // Review is only offered after funds are released (buyer accepted)
@@ -372,6 +403,32 @@ export default function OrderDetailPage() {
                   "A decision will be made within 24 hours."}
                 {order.escrowStatus === "refunded" &&
                   "The dispute was resolved in favor of the buyer."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dispute context — visible to buyer + seller when escrow is disputed */}
+      {order.escrowStatus === "disputed" && order.buyerNotes && (
+        <div className="mb-6 rounded-xl border border-red-300 bg-white p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
+              ⚠
+            </div>
+            <div className="flex-1 space-y-2 text-sm">
+              <p className="font-semibold text-red-900">
+                {isSeller
+                  ? "Buyer reported an issue"
+                  : "Your dispute is being reviewed"}
+              </p>
+              <pre className="whitespace-pre-wrap break-words font-sans text-red-900/90">
+                {order.buyerNotes}
+              </pre>
+              <p className="text-xs text-red-700">
+                {isSeller
+                  ? "An admin will review and decide whether to release or refund. You can message the buyer to try to resolve amicably."
+                  : "An admin will review and make a decision within 24 hours."}
               </p>
             </div>
           </div>
@@ -639,14 +696,16 @@ export default function OrderDetailPage() {
         )}
       </div>
 
-      {/* Review Section — only visible after escrow released */}
-      {isBuyer &&
+      {/* Review Section — only visible after escrow released (buyer + seller) */}
+      {(isBuyer || isSeller) &&
         order.status === "completed" &&
         order.escrowStatus === "released" && (
         <div className="mt-8">
           {existingReview ? (
             <div className="rounded-xl border border-border p-6">
-              <h2 className="mb-4 font-semibold">Your Review</h2>
+              <h2 className="mb-4 font-semibold">
+                {isBuyer ? "Your Review" : "Buyer's Review"}
+              </h2>
               <div className="space-y-3">
                 <StarDisplay value={existingReview.rating} size="lg" />
                 {existingReview.title && (
@@ -685,7 +744,64 @@ export default function OrderDetailPage() {
                     <p className="text-sm whitespace-pre-wrap">{existingReview.sellerResponse}</p>
                   </div>
                 )}
+
+                {/* Seller: reply to review if not yet responded */}
+                {isSeller && !existingReview.sellerResponse && (
+                  <div className="mt-4">
+                    {showResponseForm ? (
+                      <form
+                        onSubmit={handleReviewResponse}
+                        className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4"
+                      >
+                        <label className="block text-sm font-medium">
+                          Your response to this buyer
+                        </label>
+                        <textarea
+                          value={responseText}
+                          onChange={(e) => setResponseText(e.target.value)}
+                          placeholder="Thank the buyer, address their feedback, or add context…"
+                          rows={3}
+                          maxLength={1000}
+                          required
+                          className="w-full rounded-lg border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="submit"
+                            disabled={responseSubmitting || !responseText.trim()}
+                            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+                          >
+                            {responseSubmitting ? "Sending…" : "Post Response"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowResponseForm(false);
+                              setResponseText("");
+                            }}
+                            className="rounded-lg border border-input px-4 py-2 text-sm font-medium hover:bg-muted"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button
+                        onClick={() => setShowResponseForm(true)}
+                        className="w-full rounded-lg border-2 border-dashed border-primary/30 p-4 text-sm font-semibold text-primary hover:border-primary/50 hover:bg-primary/5"
+                      >
+                        💬 Respond to this review
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
+            </div>
+          ) : isSeller ? (
+            <div className="rounded-xl border border-dashed border-border p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                Waiting for buyer to leave a review.
+              </p>
             </div>
           ) : showReviewForm ? (
             <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-6">
