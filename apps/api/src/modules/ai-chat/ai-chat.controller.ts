@@ -159,4 +159,36 @@ export class AiChatController {
     const description = await this.aiChatService.generateListingDescription(body);
     return { description };
   }
+
+  @Post("identify-breed")
+  @HttpCode(200)
+  async identifyBreed(
+    @Body() body: { imageUrl: string },
+    @Req() req: Request,
+  ) {
+    const { userId, role } = this.extractUser(req);
+    const ip = this.getClientIp(req);
+    const check = this.rateLimiter.check(userId, role, ip);
+    if (!check.allowed) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          error: "Too Many Requests",
+          message: `Daily AI quota reached (${check.limit} requests).`,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    if (!body.imageUrl) {
+      throw new HttpException(
+        { statusCode: HttpStatus.BAD_REQUEST, error: "imageUrl required" },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    this.rateLimiter.increment(userId, ip);
+    const result = await this.aiChatService.identifyBreedFromImage(
+      body.imageUrl,
+    );
+    return result;
+  }
 }

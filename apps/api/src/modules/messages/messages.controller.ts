@@ -72,4 +72,19 @@ export class MessagesController {
   ) {
     return this.messagesService.markAsRead(id, userId);
   }
+
+  @Post("offers/:messageId/respond")
+  respondToOffer(
+    @Param("messageId") messageId: string,
+    @CurrentUser("id") userId: string,
+    @Body()
+    body: { decision: "accept" | "reject" | "counter"; newAmount?: number },
+  ) {
+    return this.messagesService.respondToOffer(
+      messageId,
+      userId,
+      body.decision,
+      body.newAmount,
+    );
+  }
 }

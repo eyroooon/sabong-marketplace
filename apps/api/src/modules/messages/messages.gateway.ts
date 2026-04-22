@@ -92,6 +92,18 @@ export class MessagesGateway
     client.leave(`conversation:${conversationId}`);
   }
 
+  @SubscribeMessage("typing")
+  handleTyping(client: Socket, payload: { conversationId: string; isTyping: boolean }) {
+    const userId = client.data.userId;
+    if (!userId || !payload?.conversationId) return;
+    // Emit to the conversation room except the sender
+    client.to(`conversation:${payload.conversationId}`).emit("typing", {
+      conversationId: payload.conversationId,
+      userId,
+      isTyping: payload.isTyping,
+    });
+  }
+
   // Called from the messages service when a new message is sent
   sendMessageToConversation(conversationId: string, message: any) {
     this.server

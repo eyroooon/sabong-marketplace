@@ -3,6 +3,7 @@ import {
   Inject,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from "@nestjs/common";
 import { eq, and, or, desc, sql } from "drizzle-orm";
 import { DRIZZLE } from "../../database/database.module";
@@ -195,6 +196,8 @@ export class MessagesService {
       senderId,
       content,
       messageType,
+      offerAmount: message.offerAmount,
+      offerStatus: message.offerStatus,
       createdAt: message.createdAt,
     });
     this.gateway.sendToUser(recipientId, "conversationUpdated", {
@@ -203,6 +206,89 @@ export class MessagesService {
     });
 
     return message;
+  }
+
+  /**
+   * Accept, reject, or counter an offer message.
+   * decision = 'accept' | 'reject' | 'counter' (counter requires newAmount)
+   */
+  async respondToOffer(
+    messageId: string,
+    userId: string,
+    decision: "accept" | "reject" | "counter",
+    newAmount?: number,
+  ) {
+    const [message] = await this.db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, messageId))
+      .limit(1);
+
+    if (!message) throw new NotFoundException("Message not found");
+    if (message.messageType !== "offer") {
+      throw new BadRequestException("Not an offer message");
+    }
+    if (message.offerStatus !== "pending") {
+      throw new BadRequestException("Offer already resolved");
+    }
+
+    // Verify user is a participant AND is the recipient (not the sender)
+    const conv = await this.verifyAccess(message.conversationId, userId);
+    if (message.senderId === userId) {
+      throw new BadRequestException("You can't respond to your own offer");
+    }
+
+    const nextStatus =
+      decision === "accept"
+        ? "accepted"
+        : decision === "reject"
+          ? "rejected"
+          : "countered";
+
+    await this.db
+      .update(messages)
+      .set({ offerStatus: nextStatus })
+      .where(eq(messages.id, messageId));
+
+    // Post a system-style follow-up message describing the decision
+    const amountPhp = message.offerAmount
+      ? `₱${Number(message.offerAmount).toLocaleString("en-PH")}`
+      : "";
+    let followUp = "";
+    if (decision === "accept") {
+      followUp = `✅ Accepted offer of ${amountPhp}. Proceed to checkout.`;
+    } else if (decision === "reject") {
+      followUp = `❌ Rejected offer of ${amountPhp}.`;
+    } else {
+      const counter = newAmount
+        ? `₱${Number(newAmount).toLocaleString("en-PH")}`
+        : "";
+      followUp = `🔁 Countered ${amountPhp} with ${counter}`;
+    }
+
+    if (decision === "counter" && newAmount) {
+      await this.sendMessage(
+        message.conversationId,
+        userId,
+        followUp,
+        "offer",
+        newAmount,
+      );
+    } else {
+      await this.sendMessage(message.conversationId, userId, followUp, "text");
+    }
+
+    // Notify the original sender
+    this.gateway.sendMessageToConversation(message.conversationId, {
+      id: message.id,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      offerStatus: nextStatus,
+      type: "offerUpdate",
+    });
+    void conv;
+
+    return { message: "Offer response recorded", offerStatus: nextStatus };
   }
 
   async markAsRead(conversationId: string, userId: string) {

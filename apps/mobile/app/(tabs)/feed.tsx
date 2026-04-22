@@ -40,6 +40,7 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 type FeedTab = "foryou" | "marketplace";
 
 export default function FeedScreen() {
+  const router = useRouter();
   const [tab, setTab] = useState<FeedTab>("foryou");
   const [activeIndex, setActiveIndex] = useState(0);
   const [commentsOpenFor, setCommentsOpenFor] = useState<string | null>(null);
@@ -96,6 +97,18 @@ export default function FeedScreen() {
           </Text>
         </Pressable>
       </View>
+
+      {/* Upload FAB */}
+      <Pressable
+        onPress={() => router.push("/feed/new")}
+        style={({ pressed }) => [
+          styles.uploadFab,
+          pressed && { opacity: 0.85 },
+        ]}
+        hitSlop={8}
+      >
+        <Ionicons name="add" size={28} color={colors.white} />
+      </Pressable>
 
       {isLoading && videos.length === 0 ? (
         <View style={styles.centerBox}>
@@ -427,6 +440,23 @@ const styles = StyleSheet.create({
     width: 1,
     height: 12,
     backgroundColor: "rgba(255,255,255,0.3)",
+  },
+  uploadFab: {
+    position: "absolute",
+    top: 52,
+    right: spacing[3],
+    zIndex: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   pageIndicator: {
     position: "absolute",

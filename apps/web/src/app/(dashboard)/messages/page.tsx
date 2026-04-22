@@ -15,7 +15,12 @@ export default function MessagesPage() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [showConvList, setShowConvList] = useState(true);
+  const [otherIsTyping, setOtherIsTyping] = useState(false);
+  const [counterFor, setCounterFor] = useState<string | null>(null);
+  const [counterAmount, setCounterAmount] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selfTypingRef = useRef(false);
 
   const selectedConvRef = useRef<any>(null);
   selectedConvRef.current = selectedConv;
@@ -69,16 +74,31 @@ export default function MessagesPage() {
       }
     };
 
+    const handleTyping = (payload: {
+      conversationId: string;
+      userId: string;
+      isTyping: boolean;
+    }) => {
+      if (
+        selectedConvRef.current?.id === payload.conversationId &&
+        payload.userId !== user?.id
+      ) {
+        setOtherIsTyping(payload.isTyping);
+      }
+    };
+
     socket.on("newMessage", handleNewMessage);
     socket.on("conversationUpdated", handleConversationUpdated);
     socket.on("newConversation", handleNewConversation);
+    socket.on("typing", handleTyping);
 
     return () => {
       socket.off("newMessage", handleNewMessage);
       socket.off("conversationUpdated", handleConversationUpdated);
       socket.off("newConversation", handleNewConversation);
+      socket.off("typing", handleTyping);
     };
-  }, [accessToken]);
+  }, [accessToken, user?.id]);
 
   // WebSocket: join/leave conversation rooms
   useEffect(() => {
@@ -133,6 +153,7 @@ export default function MessagesPage() {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConv || !accessToken) return;
     setSending(true);
+    stopTyping();
     try {
       const msg = await apiPost(
         `/messages/conversations/${selectedConv.id}`,
@@ -153,6 +174,59 @@ export default function MessagesPage() {
       // ignore
     } finally {
       setSending(false);
+    }
+  }
+
+  function broadcastTyping(isTyping: boolean) {
+    const socket = getSocket();
+    if (!socket || !selectedConv) return;
+    socket.emit("typing", { conversationId: selectedConv.id, isTyping });
+  }
+
+  function handleTypingChange(text: string) {
+    setNewMessage(text);
+    if (!selectedConv) return;
+    if (!selfTypingRef.current) {
+      selfTypingRef.current = true;
+      broadcastTyping(true);
+    }
+    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+    typingTimerRef.current = setTimeout(() => {
+      stopTyping();
+    }, 1500);
+  }
+
+  function stopTyping() {
+    if (selfTypingRef.current) {
+      selfTypingRef.current = false;
+      broadcastTyping(false);
+    }
+    if (typingTimerRef.current) {
+      clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+  }
+
+  async function respondToOffer(
+    messageId: string,
+    decision: "accept" | "reject" | "counter",
+    newAmount?: number,
+  ) {
+    if (!accessToken || !selectedConv) return;
+    try {
+      await apiPost(
+        `/messages/offers/${messageId}/respond`,
+        { decision, newAmount },
+        accessToken,
+      );
+      // Refresh messages
+      const res = await apiGet<any>(
+        `/messages/conversations/${selectedConv.id}`,
+        accessToken,
+      );
+      setMessages(res.data || []);
+    } catch (err: any) {
+      alert(err?.message || "Failed to respond");
     }
   }
 
@@ -289,13 +363,87 @@ export default function MessagesPage() {
                                   isMe ? "bg-white/20" : "bg-primary/10"
                                 }`}
                               >
-                                Offer:{" "}
-                                {new Intl.NumberFormat("en-PH", {
-                                  style: "currency",
-                                  currency: "PHP",
-                                }).format(Number(msg.offerAmount))}
-                                {msg.offerStatus && (
-                                  <span className="ml-2 uppercase">[{msg.offerStatus}]</span>
+                                <div className="flex items-baseline gap-2">
+                                  <span className="text-[10px] uppercase tracking-wider opacity-70">
+                                    Offer
+                                  </span>
+                                  <span className="text-sm font-black">
+                                    {new Intl.NumberFormat("en-PH", {
+                                      style: "currency",
+                                      currency: "PHP",
+                                      maximumFractionDigits: 0,
+                                    }).format(Number(msg.offerAmount))}
+                                  </span>
+                                  {msg.offerStatus && msg.offerStatus !== "pending" && (
+                                    <span
+                                      className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                        msg.offerStatus === "accepted"
+                                          ? "bg-green-500 text-white"
+                                          : msg.offerStatus === "rejected"
+                                            ? "bg-red-500 text-white"
+                                            : "bg-amber-500 text-white"
+                                      }`}
+                                    >
+                                      {msg.offerStatus}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Action buttons — only for recipient of pending offer */}
+                                {!isMe && msg.offerStatus === "pending" && (
+                                  <div className="mt-2 space-y-1">
+                                    {counterFor === msg.id ? (
+                                      <div className="flex gap-1">
+                                        <input
+                                          type="number"
+                                          value={counterAmount}
+                                          onChange={(e) => setCounterAmount(e.target.value)}
+                                          placeholder="Counter amount"
+                                          className="flex-1 rounded border border-input bg-white px-2 py-1 text-xs text-foreground"
+                                        />
+                                        <button
+                                          onClick={() => {
+                                            const n = Number(counterAmount);
+                                            if (n > 0) {
+                                              respondToOffer(msg.id, "counter", n);
+                                              setCounterFor(null);
+                                              setCounterAmount("");
+                                            }
+                                          }}
+                                          className="rounded bg-amber-500 px-2 py-1 text-[10px] font-bold text-white"
+                                        >
+                                          Send
+                                        </button>
+                                        <button
+                                          onClick={() => setCounterFor(null)}
+                                          className="rounded bg-gray-300 px-2 py-1 text-[10px] font-bold text-gray-800"
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex gap-1">
+                                        <button
+                                          onClick={() => respondToOffer(msg.id, "accept")}
+                                          className="flex-1 rounded bg-green-500 py-1 text-[10px] font-bold uppercase text-white hover:bg-green-600"
+                                        >
+                                          ✓ Accept
+                                        </button>
+                                        <button
+                                          onClick={() => setCounterFor(msg.id)}
+                                          className="flex-1 rounded bg-amber-500 py-1 text-[10px] font-bold uppercase text-white hover:bg-amber-600"
+                                        >
+                                          ⇄ Counter
+                                        </button>
+                                        <button
+                                          onClick={() => respondToOffer(msg.id, "reject")}
+                                          className="flex-1 rounded bg-red-500 py-1 text-[10px] font-bold uppercase text-white hover:bg-red-600"
+                                        >
+                                          ✗ Reject
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                               </div>
                             )}
@@ -325,13 +473,26 @@ export default function MessagesPage() {
                 )}
               </div>
 
+              {/* Typing indicator */}
+              {otherIsTyping && (
+                <div className="flex items-center gap-2 px-4 pb-1 text-xs text-muted-foreground">
+                  <span className="flex gap-0.5">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/60" style={{ animationDelay: "0ms" }} />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/60" style={{ animationDelay: "150ms" }} />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-primary/60" style={{ animationDelay: "300ms" }} />
+                  </span>
+                  <span>typing…</span>
+                </div>
+              )}
+
               {/* Message Input */}
               <form onSubmit={sendMessage} className="border-t border-border p-4 mb-14 sm:mb-0">
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
+                    onChange={(e) => handleTypingChange(e.target.value)}
+                    onBlur={stopTyping}
                     placeholder="Type a message..."
                     className="flex-1 rounded-lg border border-input px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     disabled={sending}

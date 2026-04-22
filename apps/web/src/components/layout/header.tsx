@@ -8,6 +8,7 @@ import { apiGet } from "@/lib/api";
 import { useT } from "@/lib/i18n/context";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Menu, X, Search, Bell } from "lucide-react";
+import { LanguageToggle } from "@/components/language-toggle";
 
 export function Header() {
   const { user, accessToken, isAuthenticated, logout } = useAuth();
@@ -73,6 +74,7 @@ export function Header() {
 
         {/* Desktop Nav */}
         <nav className="hidden md:flex items-center gap-4">
+          <LanguageToggle />
           {isAuthenticated() ? (
             <>
               <Link
