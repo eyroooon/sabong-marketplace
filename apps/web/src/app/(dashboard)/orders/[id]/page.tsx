@@ -86,6 +86,11 @@ export default function OrderDetailPage() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
 
+  // Dispute modal state
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputePhotos, setDisputePhotos] = useState("");
+
   // Review state
   const [existingReview, setExistingReview] = useState<any>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -103,10 +108,15 @@ export default function OrderDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    if (order && accessToken && ["completed", "delivered"].includes(order.status)) {
+    if (
+      order &&
+      accessToken &&
+      order.status === "completed" &&
+      order.escrowStatus === "released"
+    ) {
       fetchReview();
     }
-  }, [order?.id, order?.status]);
+  }, [order?.id, order?.status, order?.escrowStatus]);
 
   async function fetchOrder() {
     if (!accessToken) return;
@@ -156,6 +166,44 @@ export default function OrderDetailPage() {
     await handleAction("cancel", { cancelReason });
     setShowCancelModal(false);
     setCancelReason("");
+  }
+
+  async function handleAcceptDelivery() {
+    if (!accessToken) return;
+    setActionLoading(true);
+    try {
+      await apiPost(`/orders/${id}/accept-delivery`, {}, accessToken);
+      await fetchOrder();
+    } catch (err: any) {
+      alert(err.message || "Failed to accept delivery");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleDisputeSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!accessToken) return;
+    setActionLoading(true);
+    try {
+      const photos = disputePhotos
+        .split("\n")
+        .map((p) => p.trim())
+        .filter(Boolean);
+      await apiPost(
+        `/orders/${id}/dispute`,
+        { reason: disputeReason, photos },
+        accessToken,
+      );
+      await fetchOrder();
+      setShowDisputeModal(false);
+      setDisputeReason("");
+      setDisputePhotos("");
+    } catch (err: any) {
+      alert(err.message || "Failed to open dispute");
+    } finally {
+      setActionLoading(false);
+    }
   }
 
   async function handlePayment() {
@@ -228,9 +276,11 @@ export default function OrderDetailPage() {
   const isSeller = order.sellerId === user?.id;
   const currentStepIndex = STATUS_STEPS.findIndex((s) => s.key === order.status);
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
+  // Review is only offered after funds are released (buyer accepted)
   const canReview =
     isBuyer &&
-    ["completed", "delivered"].includes(order.status) &&
+    order.status === "completed" &&
+    order.escrowStatus === "released" &&
     !existingReview;
 
   return (
@@ -250,6 +300,83 @@ export default function OrderDetailPage() {
           minute: "2-digit",
         })}
       </p>
+
+      {/* Escrow Banner */}
+      {order.escrowStatus && order.escrowStatus !== "none" && (
+        <div
+          className={`mb-6 rounded-xl border p-4 sm:p-5 ${
+            order.escrowStatus === "held"
+              ? "border-amber-200 bg-amber-50"
+              : order.escrowStatus === "released"
+                ? "border-green-200 bg-green-50"
+                : order.escrowStatus === "disputed"
+                  ? "border-red-200 bg-red-50"
+                  : "border-gray-200 bg-gray-50"
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${
+                order.escrowStatus === "held"
+                  ? "bg-amber-100 text-amber-700"
+                  : order.escrowStatus === "released"
+                    ? "bg-green-100 text-green-700"
+                    : order.escrowStatus === "disputed"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {order.escrowStatus === "released" ? "✓" : order.escrowStatus === "disputed" ? "!" : "🔒"}
+            </div>
+            <div className="flex-1 text-sm">
+              <p
+                className={`font-semibold ${
+                  order.escrowStatus === "held"
+                    ? "text-amber-900"
+                    : order.escrowStatus === "released"
+                      ? "text-green-900"
+                      : order.escrowStatus === "disputed"
+                        ? "text-red-900"
+                        : "text-gray-900"
+                }`}
+              >
+                {order.escrowStatus === "held" &&
+                  `Escrow: ${formatPHP(Number(order.totalAmount))} held safely`}
+                {order.escrowStatus === "released" &&
+                  `Payment released to seller — ${formatPHP(Number(order.totalAmount))}`}
+                {order.escrowStatus === "disputed" &&
+                  "Under dispute — admin is reviewing"}
+                {order.escrowStatus === "refunded" &&
+                  "Payment refunded to buyer"}
+              </p>
+              <p
+                className={`mt-0.5 text-xs ${
+                  order.escrowStatus === "held"
+                    ? "text-amber-700"
+                    : order.escrowStatus === "released"
+                      ? "text-green-700"
+                      : order.escrowStatus === "disputed"
+                        ? "text-red-700"
+                        : "text-gray-700"
+                }`}
+              >
+                {order.escrowStatus === "held" &&
+                  (isBuyer
+                    ? "Ang bayad mo ay safe hanggang matanggap mo ang manok."
+                    : "Ang bayad ng buyer ay naka-hold. Released once the buyer confirms receipt.")}
+                {order.escrowStatus === "released" &&
+                  (isBuyer
+                    ? "You accepted the delivery. Transaction complete."
+                    : `Funds released on ${new Date(order.escrowReleasedAt || order.completedAt).toLocaleDateString("en-PH")}`)}
+                {order.escrowStatus === "disputed" &&
+                  "A decision will be made within 24 hours."}
+                {order.escrowStatus === "refunded" &&
+                  "The dispute was resolved in favor of the buyer."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Status Progress */}
       {!isCancelled && (
@@ -459,24 +586,48 @@ export default function OrderDetailPage() {
             Mark as Shipped
           </button>
         )}
-        {isBuyer && order.status === "shipped" && (
-          <button
-            onClick={() => handleAction("deliver")}
-            disabled={actionLoading}
-            className="rounded-lg bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
-          >
-            Confirm Delivery
-          </button>
-        )}
-        {isBuyer && order.status === "delivered" && (
-          <button
-            onClick={() => handleAction("complete")}
-            disabled={actionLoading}
-            className="rounded-lg bg-green-600 px-6 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-          >
-            Complete & Release Payment
-          </button>
-        )}
+        {isBuyer &&
+          order.status === "shipped" &&
+          order.escrowStatus !== "disputed" && (
+            <>
+              <button
+                onClick={() => handleAction("deliver")}
+                disabled={actionLoading}
+                className="rounded-lg bg-primary px-6 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+              >
+                Confirm Delivery
+              </button>
+              <button
+                onClick={() => setShowDisputeModal(true)}
+                disabled={actionLoading}
+                className="rounded-lg border border-red-300 px-6 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                Report Problem
+              </button>
+            </>
+          )}
+        {isBuyer &&
+          order.status === "delivered" &&
+          order.escrowStatus === "held" && (
+            <>
+              <button
+                onClick={handleAcceptDelivery}
+                disabled={actionLoading}
+                className="flex-1 sm:flex-none rounded-lg bg-green-600 px-6 py-3 text-sm font-bold text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                {actionLoading
+                  ? "Processing..."
+                  : `✓ Accept & Release ${formatPHP(Number(order.totalAmount))}`}
+              </button>
+              <button
+                onClick={() => setShowDisputeModal(true)}
+                disabled={actionLoading}
+                className="rounded-lg border border-red-300 px-6 py-3 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                ⚠ Report Problem
+              </button>
+            </>
+          )}
         {(order.status === "pending" || order.status === "payment_pending") && (
           <button
             onClick={() => setShowCancelModal(true)}
@@ -488,8 +639,10 @@ export default function OrderDetailPage() {
         )}
       </div>
 
-      {/* Review Section */}
-      {isBuyer && ["completed", "delivered"].includes(order.status) && (
+      {/* Review Section — only visible after escrow released */}
+      {isBuyer &&
+        order.status === "completed" &&
+        order.escrowStatus === "released" && (
         <div className="mt-8">
           {existingReview ? (
             <div className="rounded-xl border border-border p-6">
@@ -690,6 +843,66 @@ export default function OrderDetailPage() {
                   className="rounded-lg border border-input px-4 py-2 text-sm font-medium hover:bg-muted"
                 >
                   Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Dispute Modal */}
+      {showDisputeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-background border border-border p-6 shadow-xl">
+            <h2 className="mb-2 text-lg font-bold">Report a Problem</h2>
+            <p className="mb-4 text-sm text-muted-foreground">
+              Open a dispute. The escrow will be held until an admin reviews
+              your report (usually within 24 hours).
+            </p>
+            <form onSubmit={handleDisputeSubmit} className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  What happened? <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  value={disputeReason}
+                  onChange={(e) => setDisputeReason(e.target.value)}
+                  placeholder="Describe the issue: e.g. bird arrived injured, not as described, wrong breed…"
+                  rows={4}
+                  maxLength={1000}
+                  required
+                  className="w-full rounded-lg border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Photo URLs (optional)
+                </label>
+                <textarea
+                  value={disputePhotos}
+                  onChange={(e) => setDisputePhotos(e.target.value)}
+                  placeholder="Paste photo URLs, one per line. You can upload photos to your phone/cloud and paste links here."
+                  rows={3}
+                  className="w-full rounded-lg border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Clearer evidence helps admin resolve faster.
+                </p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={actionLoading || !disputeReason.trim()}
+                  className="flex-1 rounded-lg bg-red-600 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {actionLoading ? "Submitting…" : "Submit Dispute"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDisputeModal(false)}
+                  className="rounded-lg border border-input px-4 py-2.5 text-sm font-medium hover:bg-muted"
+                >
+                  Go Back
                 </button>
               </div>
             </form>
