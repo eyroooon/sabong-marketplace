@@ -37,6 +37,7 @@ export const users = pgTable(
     // Social counters (denormalized for feed perf)
     followersCount: integer("followers_count").default(0).notNull(),
     followingCount: integer("following_count").default(0).notNull(),
+    friendsCount: integer("friends_count").default(0).notNull(),
 
     // Preferences
     language: varchar("language", { length: 5 }).default("fil").notNull(),

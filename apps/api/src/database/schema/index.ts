@@ -11,4 +11,5 @@ export * from "./reports";
 export * from "./videos";
 export * from "./video-comments";
 export * from "./follows";
+export * from "./friendships";
 export * from "./otp-codes";
