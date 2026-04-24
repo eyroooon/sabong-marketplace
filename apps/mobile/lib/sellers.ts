@@ -50,15 +50,25 @@ export interface SellerProfile {
 
 export type PlanTier = "free" | "basic" | "pro";
 
+/** Matches the shape of SELLER_PLANS values in apps/api/src/modules/sellers/plans.constants.ts */
+export interface PlanConfig {
+  name: string;
+  price: number;
+  maxActiveListings: number;
+  featuredListingsPerMonth: number;
+  canPostVideos: boolean;
+  maxVideosPerMonth: number;
+  commissionRate: number;
+  verifiedBadge: boolean;
+  prioritySupport: boolean;
+  analyticsAccess: boolean;
+}
+
 export interface MyPlan {
   plan: PlanTier;
-  planDetails: {
-    key: PlanTier;
-    name: string;
-    priceMonthly: number;
-    commission: number;
-    benefits: string[];
-  };
+  planDetails: PlanConfig;
+  planExpiresAt: string | null;
+  expired: boolean;
   usage: {
     activeListings: number;
     maxActiveListings: number;
@@ -161,6 +171,39 @@ export function useUpdateSellerProfile() {
       apiPatch<SellerProfile>("/sellers/me", patch),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sellers", "me"] });
+    },
+  });
+}
+
+/**
+ * Plan catalog — getPlans() returns an array of { id, ...PlanConfig }.
+ * No auth required.
+ */
+export interface PlanCatalogItem extends PlanConfig {
+  id: PlanTier;
+}
+
+export function usePlansList() {
+  return useQuery<PlanCatalogItem[], Error>({
+    queryKey: ["sellers", "plans"],
+    queryFn: () => apiGet<PlanCatalogItem[]>("/sellers/plans"),
+    staleTime: 10 * 60_000, // plans rarely change
+  });
+}
+
+/**
+ * Upgrade (or switch) the seller's plan. Invalidates the authenticated plan
+ * + stats so the dashboard reflects the change instantly.
+ */
+export function useUpgradePlan() {
+  const qc = useQueryClient();
+  return useMutation<{ plan: PlanTier }, Error, { plan: PlanTier }>({
+    mutationFn: ({ plan }) =>
+      apiPost<{ plan: PlanTier }>("/sellers/me/plan/upgrade", { plan }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sellers", "me", "plan"] });
+      qc.invalidateQueries({ queryKey: ["sellers", "me"] });
+      qc.invalidateQueries({ queryKey: ["users", "me", "stats"] });
     },
   });
 }

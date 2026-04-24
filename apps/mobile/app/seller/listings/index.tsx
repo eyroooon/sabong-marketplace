@@ -125,7 +125,7 @@ export default function MyListingsScreen() {
                       ? { backgroundColor: "#dc2626" }
                       : { backgroundColor: "#ca8a04" },
                   ]}
-                  onPress={() => router.push("/plans" as never)}
+                  onPress={() => router.push("/plans")}
                 >
                   <Text style={styles.limitCtaText}>
                     {limitInfo.atLimit ? "Upgrade" : "View plans"}
