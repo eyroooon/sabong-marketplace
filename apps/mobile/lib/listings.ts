@@ -2,8 +2,13 @@
  * Listings data layer — react-query hooks wrapping the NestJS /listings API.
  * Mirrors apps/web/src/lib/listings.ts in spirit.
  */
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { apiGet } from "./api";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { apiDelete, apiGet, apiPatch, apiPost } from "./api";
 
 export interface Listing {
   id: string;
@@ -146,4 +151,192 @@ export function formatLocation(
 ): string | null {
   if (province && city) return `${city}, ${province}`;
   return province || city || null;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Seller-owned listing hooks (require auth)
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch the current seller's own listings across all statuses.
+ * API returns { data: Listing[], pagination } — same shape as /listings but
+ * scoped to the authenticated seller.
+ */
+export function useMyListings() {
+  return useQuery<BrowseResponse, Error>({
+    queryKey: ["listings", "my"],
+    queryFn: () => apiGet<BrowseResponse>("/listings/my"),
+    staleTime: 15_000,
+  });
+}
+
+export interface CreateListingInput {
+  title: string;
+  description?: string;
+  category: string;
+  breed?: string;
+  bloodline?: string;
+  ageMonths?: number;
+  weightKg?: number;
+  color?: string;
+  legColor?: string;
+  fightingStyle?: string;
+  sireInfo?: string;
+  damInfo?: string;
+  vaccinationStatus?: string;
+  price: number;
+  priceType?: "fixed" | "negotiable" | "auction";
+  locationProvince: string;
+  locationCity: string;
+  shippingAvailable?: boolean;
+  shippingAreas?: string;
+  shippingFee?: number;
+}
+
+export interface CreateListingResponse {
+  id: string;
+  slug: string;
+  title: string;
+  status: Listing["status"];
+}
+
+/**
+ * Create a new listing (starts in 'draft' status — seller must publish it).
+ * Returns the created listing's id + slug so the caller can immediately upload
+ * images or navigate to the detail screen.
+ */
+export function useCreateListing() {
+  const qc = useQueryClient();
+  return useMutation<CreateListingResponse, Error, CreateListingInput>({
+    mutationFn: (input) =>
+      apiPost<CreateListingResponse>("/listings", input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["listings", "my"] });
+    },
+  });
+}
+
+/**
+ * Update any listing fields. Accepts a Partial<CreateListingInput>.
+ */
+export function useUpdateListing() {
+  const qc = useQueryClient();
+  return useMutation<
+    { id: string },
+    Error,
+    { id: string; patch: Partial<CreateListingInput> }
+  >({
+    mutationFn: ({ id, patch }) =>
+      apiPatch<{ id: string }>(`/listings/${id}`, patch),
+    onSuccess: (_res, { id }) => {
+      qc.invalidateQueries({ queryKey: ["listings", "my"] });
+      qc.invalidateQueries({ queryKey: ["listings", "detail"] });
+      qc.invalidateQueries({ queryKey: ["listings", "detail", id] });
+    },
+  });
+}
+
+/**
+ * Transition a listing from draft → active (publishes it so buyers see it).
+ */
+export function usePublishListing() {
+  const qc = useQueryClient();
+  return useMutation<{ id: string }, Error, { id: string }>({
+    mutationFn: ({ id }) =>
+      apiPost<{ id: string }>(`/listings/${id}/publish`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["listings", "my"] });
+    },
+  });
+}
+
+/**
+ * Move a listing to archived (hides from marketplace but preserves history).
+ */
+export function useArchiveListing() {
+  const qc = useQueryClient();
+  return useMutation<{ id: string }, Error, { id: string }>({
+    mutationFn: ({ id }) =>
+      apiPost<{ id: string }>(`/listings/${id}/archive`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["listings", "my"] });
+    },
+  });
+}
+
+/**
+ * Hard-delete a listing. Only allowed for drafts in most cases.
+ */
+export function useDeleteListing() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: boolean }, Error, { id: string }>({
+    mutationFn: ({ id }) => apiDelete<{ ok: boolean }>(`/listings/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["listings", "my"] });
+    },
+  });
+}
+
+export interface LocalImage {
+  /** Local file uri from expo-image-picker (file:// or ph://). */
+  uri: string;
+  /** MIME type, e.g. "image/jpeg". Best-effort inferred from uri. */
+  type?: string;
+  /** Filename for the upload (defaults to last path component). */
+  name?: string;
+}
+
+/**
+ * Upload up to N images for a listing. Uses multipart/form-data — the global
+ * apiPost helper strips JSON headers when given a FormData body.
+ */
+export function useUploadListingImages() {
+  const qc = useQueryClient();
+  return useMutation<
+    { uploaded: number },
+    Error,
+    { listingId: string; images: LocalImage[] }
+  >({
+    mutationFn: ({ listingId, images }) => {
+      const form = new FormData();
+      images.forEach((img, idx) => {
+        const name = img.name || img.uri.split("/").pop() || `image-${idx}.jpg`;
+        const type =
+          img.type ||
+          (name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
+        form.append("images", {
+          uri: img.uri,
+          name,
+          type,
+        } as unknown as Blob);
+      });
+      return apiPost<{ uploaded: number }>(
+        `/listings/${listingId}/images`,
+        form,
+      );
+    },
+    onSuccess: (_res, { listingId }) => {
+      qc.invalidateQueries({ queryKey: ["listings", "my"] });
+      qc.invalidateQueries({ queryKey: ["listings", "detail", listingId] });
+    },
+  });
+}
+
+/**
+ * Delete a specific image from a listing.
+ */
+export function useDeleteListingImage() {
+  const qc = useQueryClient();
+  return useMutation<
+    { ok: boolean },
+    Error,
+    { listingId: string; imageId: string }
+  >({
+    mutationFn: ({ listingId, imageId }) =>
+      apiDelete<{ ok: boolean }>(`/listings/${listingId}/images/${imageId}`),
+    onSuccess: (_res, { listingId }) => {
+      qc.invalidateQueries({ queryKey: ["listings", "my"] });
+      qc.invalidateQueries({ queryKey: ["listings", "detail"] });
+    },
+  });
 }
