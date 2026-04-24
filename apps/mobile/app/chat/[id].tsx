@@ -26,6 +26,8 @@ import {
   joinConversation,
   leaveConversation,
   useChatSocket,
+  useTypingEmitter,
+  usePeerTyping,
 } from "@/lib/socket";
 import { useAuth } from "@/lib/auth";
 import {
@@ -49,6 +51,9 @@ export default function ChatScreen() {
   const [voiceSending, setVoiceSending] = useState(false);
 
   useChatSocket(qc);
+
+  const notifyTyping = useTypingEmitter(id);
+  const peerTyping = usePeerTyping(id, user?.id);
 
   const { data, isLoading, error } = useConversationMessages(id);
   const sendMessage = useSendMessage(id!);
@@ -164,10 +169,21 @@ export default function ChatScreen() {
         )}
 
         {/* Composer */}
+        {peerTyping ? (
+          <View style={styles.typingIndicator}>
+            <Text style={styles.typingText}>
+              typing<AnimatedDots />
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.composer}>
           <TextInput
             value={draft}
-            onChangeText={setDraft}
+            onChangeText={(v) => {
+              setDraft(v);
+              void notifyTyping(v.length > 0);
+            }}
+            onBlur={() => void notifyTyping(false)}
             placeholder="Type a message..."
             placeholderTextColor={colors.muted}
             style={styles.composerInput}
@@ -541,4 +557,23 @@ const styles = StyleSheet.create({
   sendBtnDisabled: {
     opacity: 0.5,
   },
+  typingIndicator: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    alignSelf: "flex-start",
+  },
+  typingText: {
+    fontSize: 12,
+    color: colors.muted,
+    fontStyle: "italic",
+  },
 });
+
+function AnimatedDots() {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setStep((s) => (s + 1) % 4), 300);
+    return () => clearInterval(t);
+  }, []);
+  return <Text>{".".repeat(step)}</Text>;
+}
