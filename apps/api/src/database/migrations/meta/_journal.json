@@ -15,6 +15,13 @@
       "when": 1776945033220,
       "tag": "0001_melodic_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776999487660,
+      "tag": "0002_amazing_smasher",
+      "breakpoints": true
     }
   ]
 }
