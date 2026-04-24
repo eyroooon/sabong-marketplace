@@ -131,8 +131,9 @@ function CreateOrderContent() {
 
   const shippingFee = Number(listing.shippingFee || 0);
   const deliveryMarkup = shippingFee > 0 ? Math.round(shippingFee * 0.15) : 0;
-  const platformFee = Math.round(Number(listing.price) * 0.05);
-  const total = Number(listing.price) + shippingFee + deliveryMarkup + platformFee;
+  // Platform fee is shouldered by the seller (deducted on escrow release).
+  // Buyer only pays item + shipping + delivery markup.
+  const total = Number(listing.price) + shippingFee + deliveryMarkup;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -162,11 +163,30 @@ function CreateOrderContent() {
       </div>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-6">
+        {/* Logistics banner — platform-managed pickup + batch delivery */}
+        <section className="rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">
+          <div className="flex items-start gap-3">
+            <span className="text-xl">🚚</span>
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                BloodlinePH handles the delivery
+              </p>
+              <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-200/90">
+                Kami ang pupulutin ang manok mula sa seller, aalagaan sa aming
+                holding farm hanggang kumpleto ang batch, saka idedeliver sa
+                iyo nang ligtas. No middleman, no lost packages, no stress.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* Delivery Address */}
         <section>
           <h2 className="mb-3 font-semibold">Delivery Address</h2>
           <p className="mb-2 text-xs text-muted-foreground">
-            Shipping from {listing.locationCity}, {listing.locationProvince} ({listing.shippingAreas || "local"})
+            Picking up from {listing.locationCity},{" "}
+            {listing.locationProvince} · Batch delivery across{" "}
+            {listing.shippingAreas || "local"} areas
           </p>
           <textarea
             value={form.deliveryAddress}
@@ -225,22 +245,27 @@ function CreateOrderContent() {
               <span>{formatPHP(Number(listing.price))}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Shipping fee</span>
+              <span className="text-muted-foreground">
+                Logistics &amp; handling
+              </span>
               <span>{shippingFee > 0 ? formatPHP(shippingFee) : "Free"}</span>
             </div>
             {deliveryMarkup > 0 && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Delivery handling</span>
+                <span className="text-muted-foreground">
+                  Batch delivery fee
+                </span>
                 <span>{formatPHP(deliveryMarkup)}</span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Platform fee (5%)</span>
-              <span>{formatPHP(platformFee)}</span>
-            </div>
             <div className="flex justify-between border-t border-border pt-2 text-base font-bold">
               <span>Total</span>
               <span className="text-primary">{formatPHP(total)}</span>
+            </div>
+            <div className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+              ✓ No platform fee for buyers — the 5% commission is shouldered
+              by the seller. Logistics &amp; handling covers pickup, holding
+              farm care, and batch delivery run by BloodlinePH.
             </div>
           </div>
         </section>

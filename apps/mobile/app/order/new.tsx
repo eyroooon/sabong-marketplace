@@ -269,7 +269,7 @@ export default function NewOrderScreen() {
                 />
                 {shippingFee > 0 ? (
                   <PriceRow
-                    label="Shipping"
+                    label="Logistics & handling"
                     value={formatOrderPrice(String(shippingFee))}
                   />
                 ) : null}
@@ -279,6 +279,13 @@ export default function NewOrderScreen() {
                   value={formatOrderPrice(String(total))}
                   bold
                 />
+                <View style={styles.logisticsBanner}>
+                  <Text style={styles.logisticsBannerEmoji}>🚚</Text>
+                  <Text style={styles.logisticsBannerText}>
+                    BloodlinePH handles delivery — pickup from seller,
+                    holding farm stay, then batch-delivered to you.
+                  </Text>
+                </View>
                 <View style={styles.feeNote}>
                   <Ionicons
                     name="checkmark-circle"
@@ -286,7 +293,7 @@ export default function NewOrderScreen() {
                     color={colors.emerald}
                   />
                   <Text style={styles.feeNoteText}>
-                    No platform fee for buyers
+                    No platform fee for buyers — seller shoulders the 5%
                   </Text>
                 </View>
               </View>
@@ -549,6 +556,28 @@ const styles = StyleSheet.create({
   feeNoteText: {
     fontSize: fontSize.xs,
     color: colors.emerald,
+    flex: 1,
+    flexWrap: "wrap",
+  },
+  logisticsBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "#fef3c7",
+  },
+  logisticsBannerEmoji: {
+    fontSize: 16,
+  },
+  logisticsBannerText: {
+    fontSize: fontSize.xs,
+    color: "#92400e",
+    lineHeight: 17,
+    flex: 1,
+    flexWrap: "wrap",
   },
   assuranceCard: {
     flexDirection: "row",

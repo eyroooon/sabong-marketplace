@@ -596,21 +596,53 @@ export default function OrderDetailPage() {
               <span className="text-muted-foreground">Item Price</span>
               <span>{formatPHP(Number(order.itemPrice))}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Platform Fee (5%)</span>
-              <span>{formatPHP(Number(order.platformFee))}</span>
-            </div>
-            {Number(order.shippingFee) > 0 && (
+            {Number(order.shippingFee) > 0 && !isSeller && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Shipping</span>
+                <span className="text-muted-foreground">
+                  Logistics &amp; handling
+                </span>
                 <span>{formatPHP(Number(order.shippingFee))}</span>
               </div>
             )}
-            <div className="border-t pt-3">
-              <div className="flex justify-between font-bold">
-                <span>Total</span>
-                <span>{formatPHP(Number(order.totalAmount))}</span>
+            {isSeller && (
+              <div className="flex justify-between text-red-600 dark:text-red-400">
+                <span>- Platform Fee (5%)</span>
+                <span>- {formatPHP(Number(order.platformFee))}</span>
               </div>
+            )}
+            <div className="border-t pt-3">
+              {isSeller ? (
+                <>
+                  <div className="flex justify-between font-bold">
+                    <span className="text-emerald-700 dark:text-emerald-400">
+                      Your Payout
+                    </span>
+                    <span className="text-emerald-700 dark:text-emerald-400">
+                      {formatPHP(
+                        Number(order.itemPrice) -
+                          Number(order.platformFee || 0),
+                      )}
+                    </span>
+                  </div>
+                  <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                    🚚 BloodlinePH handles the logistics — we pick up the
+                    bird, keep it at our holding farm, and deliver in batch.
+                    No shipping fee in your payout.
+                  </p>
+                </>
+              ) : (
+                <div className="flex justify-between font-bold">
+                  <span>Total {isBuyer ? "Paid" : "Amount"}</span>
+                  <span>{formatPHP(Number(order.totalAmount))}</span>
+                </div>
+              )}
+              {isBuyer && (
+                <p className="mt-2 rounded-md bg-emerald-50 px-2 py-1 text-xs text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                  ✓ No platform fee for buyers — seller shoulders the 5%.
+                  Logistics covers pickup + holding farm + batch delivery
+                  handled by BloodlinePH.
+                </p>
+              )}
             </div>
           </div>
         </div>

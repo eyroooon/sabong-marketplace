@@ -74,8 +74,10 @@ export class OrdersService {
     const itemPrice = Number(listing.price);
     const shippingFee = Number(listing.shippingFee || 0);
     const deliveryMarkup = shippingFee > 0 ? Math.round(shippingFee * DELIVERY_MARKUP_RATE) : 0;
+    // Platform fee is shouldered by the SELLER — deducted on escrow release.
+    // Buyer only pays item + shipping (seller set) + delivery markup (platform margin on shipping).
     const platformFee = Math.round(itemPrice * PLATFORM_FEE_RATE * 100) / 100;
-    const totalAmount = itemPrice + shippingFee + deliveryMarkup + platformFee;
+    const totalAmount = itemPrice + shippingFee + deliveryMarkup;
 
     // Generate order number
     const orderNumber = await this.generateOrderNumber();
@@ -716,14 +718,22 @@ export class OrdersService {
       .from(sellerProfiles)
       .where(eq(sellerProfiles.id, order.sellerId))
       .limit(1);
+    // Seller payout = item price - platform fee.
+    // Shipping is collected by BloodlinePH (we handle pickup, holding farm
+    // stay, and batch delivery logistics ourselves), so it is NOT part of
+    // the seller's payout.
+    const itemPrice = Number(order.itemPrice);
+    const platformFee = Number(order.platformFee || 0);
+    const sellerPayout = itemPrice - platformFee;
+
     if (seller?.userId) {
       this.notificationsService
         .create({
           userId: seller.userId,
           type: "order_completed",
-          title: "Order completed",
-          body: `Order ${order.orderNumber} has been completed. Payment released.`,
-          data: { orderId: order.id },
+          title: "Escrow released ✓",
+          body: `Order ${order.orderNumber} completed. Payout: ₱${sellerPayout.toLocaleString()} (₱${itemPrice.toLocaleString()} - ₱${platformFee.toLocaleString()} platform fee). Shipping is handled by BloodlinePH.`,
+          data: { orderId: order.id, payout: sellerPayout, platformFee },
         })
         .catch(() => {});
     }

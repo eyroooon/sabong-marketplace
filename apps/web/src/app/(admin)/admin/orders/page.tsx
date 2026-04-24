@@ -431,26 +431,48 @@ export default function AdminOrdersPage() {
                                     </div>
                                     <div className="flex justify-between">
                                       <span className="text-gray-500">
-                                        Shipping
+                                        Logistics (platform keeps)
                                       </span>
                                       <span className="text-gray-900">
                                         {formatCurrency(order.shippingFee)}
                                       </span>
                                     </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-500">
-                                        Platform fee
-                                      </span>
-                                      <span className="text-gray-900">
-                                        {formatCurrency(order.platformFee)}
-                                      </span>
-                                    </div>
                                     <div className="flex justify-between border-t border-gray-100 pt-1.5 font-semibold">
                                       <span className="text-gray-700">
-                                        Total
+                                        Buyer paid
                                       </span>
                                       <span className="text-gray-900">
                                         {formatCurrency(order.totalAmount)}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between text-red-600">
+                                      <span>
+                                        Platform fee (seller pays)
+                                      </span>
+                                      <span>
+                                        {formatCurrency(order.platformFee)}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between text-emerald-700">
+                                      <span>Seller payout</span>
+                                      <span>
+                                        {formatCurrency(
+                                          String(
+                                            Number(order.itemPrice) -
+                                              Number(order.platformFee || 0),
+                                          ),
+                                        )}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between text-indigo-700">
+                                      <span>Platform revenue</span>
+                                      <span>
+                                        {formatCurrency(
+                                          String(
+                                            Number(order.platformFee || 0) +
+                                              Number(order.shippingFee || 0),
+                                          ),
+                                        )}
                                       </span>
                                     </div>
                                   </div>

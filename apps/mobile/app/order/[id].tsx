@@ -493,9 +493,9 @@ export default function OrderDetailScreen() {
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Price Breakdown</Text>
           <Row label="Item price" value={formatOrderPrice(order.itemPrice)} />
-          {Number(order.shippingFee) > 0 ? (
+          {Number(order.shippingFee) > 0 && !isSeller ? (
             <Row
-              label="Shipping"
+              label="Logistics & handling"
               value={formatOrderPrice(order.shippingFee)}
             />
           ) : null}
@@ -512,8 +512,7 @@ export default function OrderDetailScreen() {
               label="Your Payout"
               value={formatOrderPrice(
                 String(
-                  Number(order.itemPrice) +
-                    Number(order.shippingFee || 0) -
+                  Number(order.itemPrice) -
                     Number(order.platformFee || 0),
                 ),
               )}
@@ -535,7 +534,16 @@ export default function OrderDetailScreen() {
                 color={colors.emerald}
               />
               <Text style={styles.feeNoteText}>
-                No platform fee for buyers
+                No platform fee — BloodlinePH handles pickup + delivery
+              </Text>
+            </View>
+          ) : null}
+          {isSeller ? (
+            <View style={[styles.feeNote, styles.logisticsNote]}>
+              <Text style={styles.feeNoteEmoji}>🚚</Text>
+              <Text style={styles.feeNoteText}>
+                Shipping handled by BloodlinePH — we pick up, care for,
+                and batch-deliver. No shipping in your payout.
               </Text>
             </View>
           ) : null}
@@ -1372,9 +1380,22 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 6,
   },
+  logisticsNote: {
+    alignItems: "flex-start",
+    backgroundColor: "#fef3c7",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  feeNoteEmoji: {
+    fontSize: 14,
+  },
   feeNoteText: {
     fontSize: fontSize.xs,
     color: colors.emerald,
+    flex: 1,
+    flexWrap: "wrap",
   },
   address: {
     fontSize: fontSize.base,
