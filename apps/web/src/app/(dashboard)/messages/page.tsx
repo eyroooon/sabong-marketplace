@@ -230,9 +230,63 @@ export default function MessagesPage() {
     }
   }
 
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+
+  async function toggleReaction(messageId: string, emoji: string) {
+    if (!accessToken || !selectedConv) return;
+    try {
+      await apiPost(
+        `/messages/${messageId}/reactions`,
+        { emoji },
+        accessToken,
+      );
+      // Refresh messages to get updated reactions
+      const res = await apiGet<any>(
+        `/messages/conversations/${selectedConv.id}`,
+        accessToken,
+      );
+      setMessages(res.data || []);
+    } catch {
+      // ignore
+    }
+  }
+
+  function chatTitle(conv: any): string {
+    if (!conv) return "";
+    if (conv.type === "group") return conv.title || "Group chat";
+    if (conv.otherUser) {
+      return (
+        conv.otherUser.displayName ||
+        `${conv.otherUser.firstName} ${conv.otherUser.lastName}`.trim()
+      );
+    }
+    return "Unknown";
+  }
+
+  function chatAvatarLetter(conv: any): string {
+    if (!conv) return "?";
+    if (conv.type === "group") return conv.title?.[0] || "G";
+    return conv.otherUser?.firstName?.[0] || "?";
+  }
+
+  function chatTypeBadge(conv: any): string | null {
+    if (conv.type === "group")
+      return `👥 ${conv.participantCount ?? ""} members`;
+    if (conv.type === "dm") return "💬 Direct";
+    return null;
+  }
+
   return (
     <div className="flex h-[calc(100vh-14rem)] sm:h-[calc(100vh-10rem)] flex-col pb-16 sm:pb-0">
-      <h1 className="mb-4 text-2xl font-bold md:mb-6">Messages</h1>
+      <div className="mb-4 flex items-center justify-between md:mb-6">
+        <h1 className="text-2xl font-bold">Messages</h1>
+        <button
+          onClick={() => setShowNewChatModal(true)}
+          className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+        >
+          + New
+        </button>
+      </div>
 
       <div className="flex flex-1 overflow-hidden rounded-xl border border-border">
         {/* Conversation List */}
@@ -267,20 +321,29 @@ export default function MessagesPage() {
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                        {conv.otherUser?.firstName?.[0] || "?"}
+                      <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${
+                        conv.type === "group"
+                          ? "bg-amber-500/10 text-amber-600"
+                          : conv.type === "dm"
+                            ? "bg-blue-500/10 text-blue-600"
+                            : "bg-primary/10 text-primary"
+                      }`}>
+                        {chatAvatarLetter(conv)}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between">
                           <p className="truncate font-medium text-sm">
-                            {conv.otherUser
-                              ? `${conv.otherUser.firstName} ${conv.otherUser.lastName}`
-                              : "Unknown"}
+                            {chatTitle(conv)}
                           </p>
                           <span className="ml-2 shrink-0 text-xs text-muted-foreground">
                             {formatShortTime(conv.lastMessageAt)}
                           </span>
                         </div>
+                        {chatTypeBadge(conv) && (
+                          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                            {chatTypeBadge(conv)}
+                          </p>
+                        )}
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">
                           {conv.lastMessagePreview || "No messages"}
                         </p>
@@ -323,15 +386,22 @@ export default function MessagesPage() {
                 >
                   &larr;
                 </button>
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                  {selectedConv.otherUser?.firstName?.[0] || "?"}
+                <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
+                  selectedConv.type === "group"
+                    ? "bg-amber-500/10 text-amber-600"
+                    : selectedConv.type === "dm"
+                      ? "bg-blue-500/10 text-blue-600"
+                      : "bg-primary/10 text-primary"
+                }`}>
+                  {chatAvatarLetter(selectedConv)}
                 </div>
                 <div>
-                  <p className="font-medium text-sm">
-                    {selectedConv.otherUser
-                      ? `${selectedConv.otherUser.firstName} ${selectedConv.otherUser.lastName}`
-                      : "Unknown"}
-                  </p>
+                  <p className="font-medium text-sm">{chatTitle(selectedConv)}</p>
+                  {chatTypeBadge(selectedConv) && (
+                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      {chatTypeBadge(selectedConv)}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -447,17 +517,88 @@ export default function MessagesPage() {
                                 )}
                               </div>
                             )}
-                            <p className="text-sm">{msg.content}</p>
-                            <p
-                              className={`mt-1 text-xs ${
-                                isMe ? "text-white/60" : "text-muted-foreground"
+                            {/* Voice note player */}
+                            {msg.messageType === "voice" && msg.mediaUrl ? (
+                              <div className="flex items-center gap-2">
+                                <audio
+                                  controls
+                                  src={
+                                    msg.mediaUrl.startsWith("http")
+                                      ? msg.mediaUrl
+                                      : `${process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") || "http://localhost:3001"}${msg.mediaUrl}`
+                                  }
+                                  className="max-w-[220px] rounded"
+                                />
+                                {msg.mediaDurationMs && (
+                                  <span className="text-xs opacity-70">
+                                    🎤 {Math.round(msg.mediaDurationMs / 1000)}s
+                                  </span>
+                                )}
+                              </div>
+                            ) : msg.messageType === "system" ? (
+                              <p className="text-center text-[11px] italic opacity-70">
+                                {msg.content}
+                              </p>
+                            ) : (
+                              <p className="text-sm">{msg.content}</p>
+                            )}
+
+                            {/* Reactions pills */}
+                            {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {Object.entries(msg.reactions as Record<string, any>).map(
+                                  ([emoji, info]: [string, any]) => {
+                                    const reactedByMe = info.userIds?.includes(user?.id);
+                                    return (
+                                      <button
+                                        key={emoji}
+                                        onClick={() => toggleReaction(msg.id, emoji)}
+                                        className={`rounded-full px-2 py-0.5 text-xs ${
+                                          reactedByMe
+                                            ? "bg-primary text-white"
+                                            : "bg-background text-foreground"
+                                        }`}
+                                        title={`${info.count} reaction${info.count > 1 ? "s" : ""}`}
+                                      >
+                                        {emoji} {info.count}
+                                      </button>
+                                    );
+                                  },
+                                )}
+                              </div>
+                            )}
+
+                            {/* Reaction trigger — visible on hover */}
+                            <div
+                              className={`mt-1 flex items-center gap-1 ${
+                                isMe ? "justify-end" : "justify-start"
                               }`}
                             >
-                              {new Date(msg.createdAt).toLocaleTimeString("en-PH", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
+                              {!isMe && msg.messageType !== "system" && (
+                                <div className="opacity-0 transition-opacity hover:opacity-100 group-hover:opacity-100">
+                                  {["🔥", "💎", "👊", "🏆"].map((e) => (
+                                    <button
+                                      key={e}
+                                      onClick={() => toggleReaction(msg.id, e)}
+                                      className="text-xs hover:scale-125"
+                                      title={`React with ${e}`}
+                                    >
+                                      {e}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              <p
+                                className={`text-xs ${
+                                  isMe ? "text-white/60" : "text-muted-foreground"
+                                }`}
+                              >
+                                {new Date(msg.createdAt).toLocaleTimeString("en-PH", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       );
@@ -530,6 +671,207 @@ export default function MessagesPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {showNewChatModal && (
+        <NewChatModal
+          accessToken={accessToken!}
+          onClose={() => setShowNewChatModal(false)}
+          onCreated={async () => {
+            setShowNewChatModal(false);
+            await fetchConversations();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function NewChatModal({
+  accessToken,
+  onClose,
+  onCreated,
+}: {
+  accessToken: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [mode, setMode] = useState<"dm" | "group">("dm");
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<any[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [groupTitle, setGroupTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (query.length < 2) {
+      setResults([]);
+      return;
+    }
+    const id = setTimeout(async () => {
+      try {
+        const data = await apiGet<any[]>(
+          `/users/search?q=${encodeURIComponent(query)}`,
+          accessToken,
+        );
+        setResults(Array.isArray(data) ? data : []);
+      } catch {
+        setResults([]);
+      }
+    }, 250);
+    return () => clearTimeout(id);
+  }, [query, accessToken]);
+
+  async function createChat() {
+    if (mode === "dm") {
+      const userId = Array.from(selected)[0];
+      if (!userId) return;
+      setBusy(true);
+      try {
+        await apiPost("/messages/dm", { otherUserId: userId }, accessToken);
+        onCreated();
+      } catch {
+        setBusy(false);
+      }
+    } else {
+      if (selected.size < 1 || !groupTitle.trim()) return;
+      setBusy(true);
+      try {
+        await apiPost(
+          "/messages/group",
+          {
+            title: groupTitle.trim(),
+            memberUserIds: Array.from(selected),
+          },
+          accessToken,
+        );
+        onCreated();
+      } catch {
+        setBusy(false);
+      }
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold">New conversation</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            ✕
+          </button>
+        </div>
+
+        <div className="mb-4 flex gap-2">
+          <button
+            onClick={() => {
+              setMode("dm");
+              setSelected(new Set());
+            }}
+            className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium ${
+              mode === "dm" ? "bg-primary text-white" : "bg-muted"
+            }`}
+          >
+            💬 Direct Message
+          </button>
+          <button
+            onClick={() => {
+              setMode("group");
+              setSelected(new Set());
+            }}
+            className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium ${
+              mode === "group" ? "bg-primary text-white" : "bg-muted"
+            }`}
+          >
+            👥 Group Chat
+          </button>
+        </div>
+
+        {mode === "group" && (
+          <input
+            type="text"
+            placeholder="Group name (e.g. Kelso Circle)"
+            value={groupTitle}
+            onChange={(e) => setGroupTitle(e.target.value)}
+            className="mb-3 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none"
+          />
+        )}
+
+        <input
+          type="text"
+          placeholder="Search by name…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="mb-3 w-full rounded-lg border border-input px-3 py-2 text-sm focus:border-primary focus:outline-none"
+        />
+
+        <div className="mb-4 max-h-60 space-y-1 overflow-y-auto">
+          {results.map((u) => {
+            const isSelected = selected.has(u.id);
+            return (
+              <button
+                key={u.id}
+                onClick={() => {
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    if (mode === "dm") {
+                      next.clear();
+                      next.add(u.id);
+                    } else {
+                      if (isSelected) next.delete(u.id);
+                      else next.add(u.id);
+                    }
+                    return next;
+                  });
+                }}
+                className={`flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-muted ${
+                  isSelected ? "bg-primary/10 ring-1 ring-primary" : ""
+                }`}
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-sm font-bold">
+                  {u.firstName?.[0] || "?"}
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">
+                    {u.displayName || `${u.firstName} ${u.lastName}`}
+                  </p>
+                  {u.city && (
+                    <p className="text-xs text-muted-foreground">
+                      {u.city}, {u.province}
+                    </p>
+                  )}
+                </div>
+                {isSelected && <span className="text-primary">✓</span>}
+              </button>
+            );
+          })}
+          {results.length === 0 && query.length >= 2 && (
+            <p className="py-4 text-center text-sm text-muted-foreground">
+              No users found
+            </p>
+          )}
+          {query.length < 2 && (
+            <p className="py-4 text-center text-xs text-muted-foreground">
+              Type 2+ characters to search
+            </p>
+          )}
+        </div>
+
+        <button
+          onClick={createChat}
+          disabled={
+            busy ||
+            selected.size === 0 ||
+            (mode === "group" && !groupTitle.trim())
+          }
+          className="w-full rounded-lg bg-primary py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+        >
+          {busy
+            ? "Creating…"
+            : mode === "dm"
+              ? "Start DM"
+              : `Create group (${selected.size} selected)`}
+        </button>
       </div>
     </div>
   );
