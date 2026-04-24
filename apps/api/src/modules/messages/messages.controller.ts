@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -12,6 +13,10 @@ import { MessagesService } from "./messages.service";
 import {
   StartConversationDto,
   SendMessageDto,
+  CreateDmDto,
+  CreateGroupDto,
+  ReactionDto,
+  AddMembersDto,
 } from "./dto/send-message.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
@@ -37,6 +42,7 @@ export class MessagesController {
     return this.messagesService.getMessages(id, userId, page, limit);
   }
 
+  // Legacy: start a listing-scoped buyer↔seller chat
   @Post("conversations")
   startConversation(
     @CurrentUser("id") userId: string,
@@ -50,6 +56,48 @@ export class MessagesController {
     );
   }
 
+  // New: get or create a 1:1 DM with any user
+  @Post("dm")
+  createDm(
+    @CurrentUser("id") userId: string,
+    @Body() dto: CreateDmDto,
+  ) {
+    return this.messagesService.getOrCreateDm(userId, dto.otherUserId);
+  }
+
+  // New: create a group chat
+  @Post("group")
+  createGroup(
+    @CurrentUser("id") userId: string,
+    @Body(new SanitizePipe()) dto: CreateGroupDto,
+  ) {
+    return this.messagesService.createGroup(
+      userId,
+      dto.title,
+      dto.memberUserIds,
+    );
+  }
+
+  // Add members to an existing group
+  @Post("conversations/:id/members")
+  addMembers(
+    @Param("id") id: string,
+    @CurrentUser("id") userId: string,
+    @Body() dto: AddMembersDto,
+  ) {
+    return this.messagesService.addGroupMembers(id, userId, dto.userIds);
+  }
+
+  // Leave a group
+  @Post("conversations/:id/leave")
+  leaveGroup(
+    @Param("id") id: string,
+    @CurrentUser("id") userId: string,
+  ) {
+    return this.messagesService.leaveGroup(id, userId);
+  }
+
+  // Send a message (any type — text, image, voice, reply, share)
   @Post("conversations/:id")
   sendMessage(
     @Param("id") id: string,
@@ -59,10 +107,29 @@ export class MessagesController {
     return this.messagesService.sendMessage(
       id,
       userId,
-      dto.content,
-      dto.messageType,
-      dto.offerAmount,
+      dto.content ?? "",
+      dto.messageType ?? "text",
+      {
+        offerAmount: dto.offerAmount,
+        mediaUrl: dto.mediaUrl,
+        mediaDurationMs: dto.mediaDurationMs,
+        mediaWidth: dto.mediaWidth,
+        mediaHeight: dto.mediaHeight,
+        replyToMessageId: dto.replyToMessageId,
+        attachedListingId: dto.attachedListingId,
+        attachedVideoId: dto.attachedVideoId,
+      },
     );
+  }
+
+  // Toggle a reaction on a specific message
+  @Post(":messageId/reactions")
+  toggleReaction(
+    @Param("messageId") messageId: string,
+    @CurrentUser("id") userId: string,
+    @Body() dto: ReactionDto,
+  ) {
+    return this.messagesService.toggleReaction(userId, messageId, dto.emoji);
   }
 
   @Patch("conversations/:id/read")
