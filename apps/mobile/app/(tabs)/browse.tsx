@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -12,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useBrowseListings, type BrowseFilters } from "@/lib/listings";
 import { ListingCard } from "@/components/listings/ListingCard";
+import { FiltersSheet } from "@/components/browse/FiltersSheet";
 import {
   colors,
   fontSize,
@@ -27,17 +29,39 @@ const SORT_OPTIONS: { label: string; value: BrowseFilters["sort"] }[] = [
   { label: "Popular", value: "popular" },
 ];
 
+/** Count active non-search, non-default-sort filters for the badge dot */
+function countActiveFilters(f: BrowseFilters): number {
+  return [
+    f.category,
+    f.breed,
+    f.province,
+    f.minPrice !== undefined ? "min" : undefined,
+    f.maxPrice !== undefined ? "max" : undefined,
+  ].filter(Boolean).length;
+}
+
 export default function BrowseScreen() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<BrowseFilters["sort"]>("newest");
+
+  // Extended filters managed by the FiltersSheet (excludes search/sort which
+  // stay in their own state so the search bar and sort chips keep working).
+  const [sheetFilters, setSheetFilters] = useState<
+    Pick<BrowseFilters, "category" | "breed" | "province" | "minPrice" | "maxPrice">
+  >({});
+
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const filters = useMemo<BrowseFilters>(
     () => ({
       search: search.trim() || undefined,
       sort,
+      ...sheetFilters,
     }),
-    [search, sort],
+    [search, sort, sheetFilters],
   );
+
+  const hasActiveFilters = countActiveFilters(filters) > 0;
 
   const {
     data,
@@ -57,15 +81,39 @@ export default function BrowseScreen() {
 
   const total = data?.pages[0]?.pagination.total ?? 0;
 
+  /** Called by the sheet when the user taps Apply */
+  const handleSheetApply = (next: BrowseFilters) => {
+    // Extract only the sheet-owned fields; search stays in its own state
+    const { search: _s, sort: nextSort, ...rest } = next;
+    if (nextSort) setSort(nextSort);
+    setSheetFilters(rest);
+  };
+
   return (
     <SafeAreaView style={styles.root} edges={["top"]}>
       <View style={styles.header}>
         <Text style={styles.title}>Browse</Text>
-        {total > 0 ? (
-          <Text style={styles.countText}>
-            {total.toLocaleString()} {total === 1 ? "listing" : "listings"}
-          </Text>
-        ) : null}
+        <View style={styles.headerRight}>
+          {total > 0 ? (
+            <Text style={styles.countText}>
+              {total.toLocaleString()} {total === 1 ? "listing" : "listings"}
+            </Text>
+          ) : null}
+          {/* Filters icon button with active badge */}
+          <Pressable
+            onPress={() => setFiltersOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open filters"
+            style={styles.filterBtn}
+          >
+            <Ionicons
+              name="options-outline"
+              size={22}
+              color={hasActiveFilters ? colors.primary : colors.foreground}
+            />
+            {hasActiveFilters ? <View style={styles.filterBadge} /> : null}
+          </Pressable>
+        </View>
       </View>
 
       {/* Search */}
@@ -160,6 +208,13 @@ export default function BrowseScreen() {
           ) : null
         }
       />
+
+      <FiltersSheet
+        visible={filtersOpen}
+        initial={filters}
+        onClose={() => setFiltersOpen(false)}
+        onApply={handleSheetApply}
+      />
     </SafeAreaView>
   );
 }
@@ -191,7 +246,7 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing[5],
     paddingTop: spacing[2],
@@ -202,9 +257,29 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.black,
     color: colors.foreground,
   },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing[3],
+  },
   countText: {
     fontSize: fontSize.sm,
     color: colors.muted,
+  },
+  filterBtn: {
+    position: "relative",
+    padding: 4,
+  },
+  filterBadge: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+    borderWidth: 1.5,
+    borderColor: colors.mutedBg,
   },
   searchBar: {
     flexDirection: "row",
