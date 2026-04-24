@@ -90,9 +90,7 @@ export default function ProfileScreen() {
           <MenuItem
             icon="heart-outline"
             label="Favorites"
-            onPress={() =>
-              Alert.alert("Coming soon", "Favorites sync in next phase.")
-            }
+            onPress={() => router.push("/favorites")}
           />
           <MenuItem
             icon="settings-outline"
