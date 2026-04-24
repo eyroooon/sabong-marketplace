@@ -931,3 +931,254 @@ export const DEMO_NOTIFICATIONS: Array<{
     isRead: false,
   },
 ];
+
+// ---------- Bloodline Groups ----------
+//
+// Six realistic communities: 2 regional, 2 bloodline, 2 topic.
+// Demo users join a mix of them to make the UI feel lived-in.
+
+export const DEMO_GROUPS: ReadonlyArray<{
+  slug: string;
+  name: string;
+  description: string;
+  category: "regional" | "bloodline" | "topic" | "general";
+  type: "public" | "private" | "secret";
+  iconEmoji: string;
+  creatorKey: DemoUserKey;
+  memberKeys: ReadonlyArray<DemoUserKey>;
+  posts: ReadonlyArray<{
+    authorKey: DemoUserKey;
+    body: string;
+    minutesAgo: number;
+    pinned?: boolean;
+    likes?: number;
+    comments?: number;
+  }>;
+}> = [
+  {
+    slug: "pampanga-sabungeros",
+    name: "Pampanga Sabungeros",
+    description:
+      "Ang opisyal na community ng mga sabungero sa Pampanga. Share stories, tips, and trades. Kapampangan breeders lang po!",
+    category: "regional",
+    type: "public",
+    iconEmoji: "🏠",
+    creatorKey: "seller_tomas",
+    memberKeys: ["seller_tomas", "admin", "buyer_pedro", "buyer_reylyn"],
+    posts: [
+      {
+        authorKey: "seller_tomas",
+        body:
+          "Maligayang pagdating sa Pampanga Sabungeros! Welcome sa lahat ng breeders, buyers, at enthusiasts. No betting / e-sabong content please. Respect each other.",
+        minutesAgo: 60 * 24 * 7,
+        pinned: true,
+        likes: 47,
+        comments: 12,
+      },
+      {
+        authorKey: "seller_tomas",
+        body:
+          "Good morning Kapampangans 🌅 Today pwede na kayong mag-visit sa Angeles farm. 5 new Kelso chicks hatched last night!",
+        minutesAgo: 45,
+        likes: 23,
+        comments: 5,
+      },
+      {
+        authorKey: "buyer_pedro",
+        body:
+          "Sino may recommended vet sa Pampanga area? My bird has leg swelling. Tulong sa mga expert 🙏",
+        minutesAgo: 180,
+        likes: 4,
+        comments: 8,
+      },
+    ],
+  },
+  {
+    slug: "cebu-sabong-club",
+    name: "Cebu Sabong Club",
+    description:
+      "Cebuano sabungeros, uban ta dinhi! Share news, trades, at farm updates from Visayas. Usa ra ka pamilya!",
+    category: "regional",
+    type: "public",
+    iconEmoji: "🏝️",
+    creatorKey: "buyer_pedro",
+    memberKeys: ["buyer_pedro"],
+    posts: [
+      {
+        authorKey: "buyer_pedro",
+        body:
+          "Welcome sa Cebu Sabong Club! Unang group para sa mga sabungero sa buong Visayas. Hinay-hinay tang magpadako 🔥",
+        minutesAgo: 60 * 24 * 14,
+        pinned: true,
+        likes: 38,
+        comments: 9,
+      },
+      {
+        authorKey: "buyer_pedro",
+        body:
+          "Naay maka-recommend ug maayo nga breeder sa Cebu? I'm looking for pure Kelso stag para sa next project ko.",
+        minutesAgo: 60 * 5,
+        likes: 7,
+        comments: 3,
+      },
+    ],
+  },
+  {
+    slug: "kelso-nation",
+    name: "Kelso Nation",
+    description:
+      "For serious Kelso breeders and enthusiasts. Discuss bloodlines, breeding pairs, and tradition. Respect the legacy of Walter Kelso.",
+    category: "bloodline",
+    type: "public",
+    iconEmoji: "🧬",
+    creatorKey: "seller_kelsofarm",
+    memberKeys: [
+      "seller_kelsofarm",
+      "seller_tomas",
+      "buyer_pedro",
+      "buyer_reylyn",
+      "admin",
+    ],
+    posts: [
+      {
+        authorKey: "seller_kelsofarm",
+        body:
+          "Welcome to Kelso Nation 🏆 Founded by breeders, for breeders. Pure Kelso bloodline lang po dito. Share pedigrees, techniques, and your farm's champions. Respect lang sa ibang breeders.",
+        minutesAgo: 60 * 24 * 30,
+        pinned: true,
+        likes: 128,
+        comments: 34,
+      },
+      {
+        authorKey: "seller_kelsofarm",
+        body:
+          "Sharing my Sultan Kelso line: 4 generations of pure genetics traced back to 1988. This is why pedigree matters. Ibang kaangasan kapag straight line.",
+        minutesAgo: 60 * 8,
+        likes: 54,
+        comments: 12,
+      },
+      {
+        authorKey: "seller_tomas",
+        body:
+          "Thanks Kuya Ramon for hosting this group. Naipa-share ko yung breeding pair ko from last season — incredible hatch rate.",
+        minutesAgo: 60 * 4,
+        likes: 18,
+        comments: 3,
+      },
+    ],
+  },
+  {
+    slug: "sweater-society",
+    name: "Sweater Society",
+    description:
+      "All things Sweater bloodline. Breeding pairs, fighting style discussions, and tradition from the Madigin line.",
+    category: "bloodline",
+    type: "public",
+    iconEmoji: "💎",
+    creatorKey: "seller_tomas",
+    memberKeys: ["seller_tomas", "seller_kelsofarm", "buyer_reylyn"],
+    posts: [
+      {
+        authorKey: "seller_tomas",
+        body:
+          "Sweater Society — founded for the appreciation of the classic Madigin bloodline. Ipagmamalaki natin ang heritage.",
+        minutesAgo: 60 * 24 * 21,
+        pinned: true,
+        likes: 72,
+        comments: 15,
+      },
+      {
+        authorKey: "seller_tomas",
+        body:
+          "What's everyone's preferred Sweater × Kelso cross ratio? I've had best results with 50/50. Sharing my notes.",
+        minutesAgo: 60 * 12,
+        likes: 29,
+        comments: 8,
+      },
+    ],
+  },
+  {
+    slug: "feeding-and-nutrition",
+    name: "Feeding & Nutrition Tips",
+    description:
+      "Share feeding schedules, feed brands, supplements, at naturally-prepared meals. Healthy bird = champion bird.",
+    category: "topic",
+    type: "public",
+    iconEmoji: "🌾",
+    creatorKey: "admin",
+    memberKeys: [
+      "admin",
+      "seller_tomas",
+      "seller_kelsofarm",
+      "seller_mike",
+      "buyer_pedro",
+      "buyer_reylyn",
+    ],
+    posts: [
+      {
+        authorKey: "admin",
+        body:
+          "Welcome to Feeding & Nutrition Tips! 🌾 Share your feeding schedule, questions, and what's working for your farm. Tagalog or English — lahat okay!",
+        minutesAgo: 60 * 24 * 10,
+        pinned: true,
+        likes: 91,
+        comments: 22,
+      },
+      {
+        authorKey: "seller_tomas",
+        body:
+          "My morning mix for 6-month stags: 2 parts cracked corn, 1 part wheat, 1 part feed pellet, splash of apple cider vinegar in water. Simple lang pero consistent.",
+        minutesAgo: 60 * 6,
+        likes: 41,
+        comments: 14,
+      },
+      {
+        authorKey: "buyer_reylyn",
+        body:
+          "Tanong lang po — ilang beses po dapat i-supplement ng vitamins per week for 4-month pullets? First time ko po 🙏",
+        minutesAgo: 60 * 3,
+        likes: 2,
+        comments: 6,
+      },
+    ],
+  },
+  {
+    slug: "new-sabungero-support",
+    name: "New Sabungero Support",
+    description:
+      "Para sa mga baguhan! Ask questions, post your first pair, get guidance from experienced breeders. Walang hanging question.",
+    category: "topic",
+    type: "public",
+    iconEmoji: "🔰",
+    creatorKey: "admin",
+    memberKeys: ["admin", "buyer_reylyn", "seller_mike", "seller_tomas"],
+    posts: [
+      {
+        authorKey: "admin",
+        body:
+          "New Sabungero Support — safe space para sa mga nagsisimula. Walang judgment. Tanong lang, tulungan kita.",
+        minutesAgo: 60 * 24 * 14,
+        pinned: true,
+        likes: 56,
+        comments: 11,
+      },
+      {
+        authorKey: "buyer_reylyn",
+        body:
+          "First time breeder here 🔰 Just bought my first pair last week. Ano po magandang gawin sa first 30 days? Any pitfalls to watch?",
+        minutesAgo: 60 * 18,
+        likes: 12,
+        comments: 19,
+      },
+      {
+        authorKey: "seller_tomas",
+        body:
+          "Welcome sis! Tips para sa first month: 1) regular deworming 2) clean water daily 3) observe lang muna, don't over-feed. Mas importante ang pasensya than flash diet.",
+        minutesAgo: 60 * 17,
+        likes: 24,
+        comments: 3,
+      },
+    ],
+  },
+];
+

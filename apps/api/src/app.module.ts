@@ -21,6 +21,7 @@ import { ReviewsModule } from "./modules/reviews/reviews.module";
 import { AiChatModule } from "./modules/ai-chat/ai-chat.module";
 import { FollowsModule } from "./modules/follows/follows.module";
 import { FriendsModule } from "./modules/friends/friends.module";
+import { GroupsModule } from "./modules/groups/groups.module";
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { FriendsModule } from "./modules/friends/friends.module";
     AiChatModule,
     FollowsModule,
     FriendsModule,
+    GroupsModule,
   ],
   providers: [
     // Sentry-aware global filter so thrown exceptions are captured.

@@ -30,6 +30,9 @@ import {
   chatParticipants,
   messageReactions,
   videoListings,
+  groups,
+  groupMembers,
+  groupPosts,
 } from "../schema";
 import {
   DEMO_PASSWORD,
@@ -43,6 +46,7 @@ import {
   DEMO_REVIEWS,
   DEMO_FOLLOWS,
   DEMO_NOTIFICATIONS,
+  DEMO_GROUPS,
   listingImg,
   type DemoUserKey,
 } from "./fixtures";
@@ -120,6 +124,9 @@ async function run() {
   console.log("🔔 Seeding notifications…");
   await seedNotifications(db, userIdByKey);
 
+  console.log("👥 Seeding groups + members + posts…");
+  await seedGroups(db, userIdByKey);
+
   console.log("\n✨ Demo seed complete!\n");
   printSummary();
 
@@ -136,6 +143,9 @@ async function wipeData(db: ReturnType<typeof drizzle>) {
   await db.execute(sql`DELETE FROM chat_participants`);
   await db.execute(sql`DELETE FROM video_listings`);
   await db.execute(sql`DELETE FROM friendships`);
+  await db.execute(sql`DELETE FROM group_posts`);
+  await db.execute(sql`DELETE FROM group_members`);
+  await db.execute(sql`DELETE FROM groups`);
   // Original tables
   await db.execute(sql`DELETE FROM video_comments`);
   await db.execute(sql`DELETE FROM video_likes`);
@@ -1066,6 +1076,54 @@ async function seedVideoListings(
   void slugs;
 }
 
+async function seedGroups(
+  db: ReturnType<typeof drizzle>,
+  userIdByKey: Map<DemoUserKey, string>,
+) {
+  for (const g of DEMO_GROUPS) {
+    const [group] = await db
+      .insert(groups)
+      .values({
+        slug: g.slug,
+        name: g.name,
+        description: g.description,
+        category: g.category,
+        type: g.type,
+        iconEmoji: g.iconEmoji,
+        memberCount: g.memberKeys.length,
+        postCount: g.posts.length,
+        createdById: userIdByKey.get(g.creatorKey)!,
+      })
+      .returning();
+
+    // Memberships — creator is owner, everyone else is member.
+    for (const memberKey of g.memberKeys) {
+      const isOwner = memberKey === g.creatorKey;
+      await db.insert(groupMembers).values({
+        groupId: group.id,
+        userId: userIdByKey.get(memberKey)!,
+        role: isOwner ? "owner" : "member",
+        status: "active",
+      });
+    }
+
+    // Posts with backdated createdAt + optional pinnedAt.
+    for (const p of g.posts) {
+      const createdAt = new Date(Date.now() - p.minutesAgo * 60_000);
+      await db.insert(groupPosts).values({
+        groupId: group.id,
+        authorId: userIdByKey.get(p.authorKey)!,
+        body: p.body,
+        images: [],
+        likesCount: p.likes ?? 0,
+        commentsCount: p.comments ?? 0,
+        pinnedAt: p.pinned ? createdAt : null,
+        createdAt,
+      });
+    }
+  }
+}
+
 function printSummary() {
   console.log("╔════════════════════════════════════════════════╗");
   console.log("║           🎬  DEMO DATA SUMMARY                ║");
@@ -1083,6 +1141,10 @@ function printSummary() {
   console.log(`  👥 Group chats:    1 Kelso Circle (4 members)`);
   console.log(`  🛒 Shoppable reels: tagged across all videos`);
   console.log(`  🔔 Notifications:  ${DEMO_NOTIFICATIONS.length}`);
+  const groupTotalPosts = DEMO_GROUPS.reduce((s, g) => s + g.posts.length, 0);
+  console.log(
+    `  👥 Groups:         ${DEMO_GROUPS.length} (${groupTotalPosts} posts)`,
+  );
   console.log("\n  All users password: " + DEMO_PASSWORD);
   console.log("\n  Demo accounts:");
   DEMO_USERS.forEach((u) => {

@@ -13,6 +13,7 @@ const sidebarLinks = [
   { href: "/orders", label: "My Orders" },
   { href: "/messages", label: "Messages" },
   { href: "/friends", label: "Friends" },
+  { href: "/groups", label: "Groups" },
   { href: "/favorites", label: "Favorites" },
   { href: "/notifications", label: "Notifications" },
   { href: "/plans", label: "Plans & Billing" },
