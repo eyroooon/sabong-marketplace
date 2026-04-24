@@ -97,9 +97,7 @@ export default function ProfileScreen() {
           <MenuItem
             icon="settings-outline"
             label="Settings"
-            onPress={() =>
-              Alert.alert("Coming soon", "Settings screen in next phase.")
-            }
+            onPress={() => router.push("/settings")}
             isLast
           />
         </View>
