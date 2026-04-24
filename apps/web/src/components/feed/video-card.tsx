@@ -19,6 +19,7 @@ interface VideoCardProps {
     commentCount: number;
     createdAt: string;
     isLiked?: boolean;
+    taggedListingCount?: number;
     user: {
       id: string;
       firstName: string;
@@ -37,6 +38,18 @@ interface VideoCardProps {
   isActive: boolean;
 }
 
+interface TaggedListing {
+  id: string;
+  slug: string;
+  title: string;
+  breed: string | null;
+  price: string;
+  primaryImageUrl: string | null;
+  status: string;
+  displayOrder: number;
+  clickCount: number;
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") || "http://localhost:3001";
 
 export function VideoCard({ video, isActive }: VideoCardProps) {
@@ -48,6 +61,35 @@ export function VideoCard({ video, isActive }: VideoCardProps) {
   const [commentCount, setCommentCount] = useState(video.commentCount);
   const [showHeart, setShowHeart] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
+  const [taggedListings, setTaggedListings] = useState<TaggedListing[]>([]);
+  const [shopLoading, setShopLoading] = useState(false);
+
+  const openShop = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShopOpen(true);
+    if (taggedListings.length > 0) return; // already fetched
+    setShopLoading(true);
+    try {
+      const data = await apiGet<TaggedListing[]>(
+        `/videos/${video.id}/tagged-listings`,
+      );
+      setTaggedListings(data || []);
+    } catch {
+      setTaggedListings([]);
+    } finally {
+      setShopLoading(false);
+    }
+  }, [video.id, taggedListings.length]);
+
+  const trackShopClick = useCallback((listingId: string) => {
+    // Fire-and-forget — we don't need the response
+    apiPost(
+      `/videos/${video.id}/listings/${listingId}/click`,
+      {},
+      accessToken || undefined,
+    ).catch(() => {});
+  }, [video.id, accessToken]);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
@@ -216,6 +258,111 @@ export function VideoCard({ video, isActive }: VideoCardProps) {
 
       {/* Heart animation */}
       <HeartAnimation show={showHeart} onComplete={() => setShowHeart(false)} />
+
+      {/* Shop pill — appears when the creator tagged listings in this reel */}
+      {(video.taggedListingCount ?? 0) > 0 && (
+        <button
+          onClick={openShop}
+          className="absolute left-1/2 top-16 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-400 via-orange-500 to-red-500 px-4 py-2 text-xs font-bold text-white shadow-xl ring-2 ring-white/60 transition-transform hover:scale-105"
+          aria-label={`Shop ${video.taggedListingCount} tagged listings`}
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"
+            />
+          </svg>
+          <span>🛒 {video.taggedListingCount}</span>
+        </button>
+      )}
+
+      {/* Shop sheet */}
+      {shopOpen && (
+        <div
+          className="absolute inset-0 z-40 flex items-end bg-black/60 backdrop-blur-sm"
+          onClick={() => setShopOpen(false)}
+        >
+          <div
+            className="w-full rounded-t-3xl bg-white p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-gray-300" />
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-black">🛒 Shop this reel</h3>
+              <button
+                onClick={() => setShopOpen(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            {shopLoading ? (
+              <div className="flex h-32 items-center justify-center">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-red-500 border-t-transparent" />
+              </div>
+            ) : taggedListings.length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-500">
+                No listings tagged yet.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {taggedListings.map((l) => (
+                  <Link
+                    key={l.id}
+                    href={`/listings/${l.slug}?ref=feed&v=${video.id}`}
+                    onClick={() => trackShopClick(l.id)}
+                    className="flex items-center gap-3 rounded-xl bg-gray-50 p-3 transition-colors hover:bg-gray-100"
+                  >
+                    <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-amber-100 to-red-100">
+                      {l.primaryImageUrl ? (
+                        <img
+                          src={
+                            l.primaryImageUrl.startsWith("http")
+                              ? l.primaryImageUrl
+                              : `${API_BASE}${l.primaryImageUrl}`
+                          }
+                          alt={l.title}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-2xl">
+                          🐓
+                        </div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-gray-900">
+                        {l.title}
+                      </p>
+                      {l.breed && (
+                        <p className="text-xs text-gray-500">{l.breed}</p>
+                      )}
+                      <p className="mt-1 text-base font-black text-red-600">
+                        {new Intl.NumberFormat("en-PH", {
+                          style: "currency",
+                          currency: "PHP",
+                          maximumFractionDigits: 0,
+                        }).format(Number(l.price))}
+                      </p>
+                    </div>
+                    <span className="flex-shrink-0 rounded-full bg-gradient-to-r from-amber-400 to-red-500 px-3 py-1.5 text-xs font-bold text-white">
+                      Shop →
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Right side action bar */}
       <div className="absolute bottom-32 right-3 flex flex-col items-center gap-5 z-20">
