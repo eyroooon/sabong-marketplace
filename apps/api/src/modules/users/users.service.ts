@@ -1,5 +1,5 @@
 import { Injectable, Inject, NotFoundException } from "@nestjs/common";
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, or, sql, inArray, desc } from "drizzle-orm";
 import { DRIZZLE } from "../../database/database.module";
 import {
   users,
@@ -155,6 +155,120 @@ export class UsersService {
       totalSales: seller ? seller.totalSales : null,
       avgRating: seller ? seller.avgRating : null,
     };
+  }
+
+  /**
+   * Search users by name, displayName, or phone.
+   * Excludes the querying user.
+   * Used for friend/messaging discovery UI.
+   */
+  async searchUsers(query: string, currentUserId: string, limit = 20) {
+    if (!query || query.trim().length < 2) return [];
+    const pattern = `%${query.trim()}%`;
+    const rows = await this.db
+      .select({
+        id: users.id,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        displayName: users.displayName,
+        avatarUrl: users.avatarUrl,
+        city: users.city,
+        province: users.province,
+        isVerified: users.isVerified,
+        followersCount: users.followersCount,
+      })
+      .from(users)
+      .where(
+        and(
+          sql`${users.id} != ${currentUserId}`,
+          eq(users.isActive, true),
+          or(
+            sql`${users.firstName} ILIKE ${pattern}`,
+            sql`${users.lastName} ILIKE ${pattern}`,
+            sql`${users.displayName} ILIKE ${pattern}`,
+            sql`${users.phone} ILIKE ${pattern}`,
+          ),
+        ),
+      )
+      .orderBy(desc(users.followersCount))
+      .limit(limit);
+    return rows;
+  }
+
+  /**
+   * Suggest people the current user might want to friend.
+   * Tier 1: same province, not already in any friendship row.
+   * Tier 2 (fallback): verified/popular users anywhere.
+   * Ordered by followersCount.
+   */
+  async suggestFriends(currentUserId: string, limit = 10) {
+    const [me] = await this.db
+      .select({ province: users.province })
+      .from(users)
+      .where(eq(users.id, currentUserId))
+      .limit(1);
+    if (!me) return [];
+
+    const baseSelect = {
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      displayName: users.displayName,
+      avatarUrl: users.avatarUrl,
+      city: users.city,
+      province: users.province,
+      isVerified: users.isVerified,
+      followersCount: users.followersCount,
+    } as const;
+
+    const notFriendsYet = sql`NOT EXISTS (
+      SELECT 1 FROM friendships f
+      WHERE (f.user_a_id = ${currentUserId} AND f.user_b_id = ${users.id})
+         OR (f.user_b_id = ${currentUserId} AND f.user_a_id = ${users.id})
+    )`;
+
+    let sameProvince: any[] = [];
+    if (me.province) {
+      sameProvince = await this.db
+        .select(baseSelect)
+        .from(users)
+        .where(
+          and(
+            sql`${users.id} != ${currentUserId}`,
+            eq(users.isActive, true),
+            eq(users.province, me.province),
+            notFriendsYet,
+          ),
+        )
+        .orderBy(desc(users.followersCount))
+        .limit(limit);
+    }
+
+    if (sameProvince.length >= limit) return sameProvince;
+
+    // Tier 2 fallback: verified or popular users from any province
+    const remaining = limit - sameProvince.length;
+    const existingIds = sameProvince.map((u: any) => u.id);
+    const fallback = await this.db
+      .select(baseSelect)
+      .from(users)
+      .where(
+        and(
+          sql`${users.id} != ${currentUserId}`,
+          eq(users.isActive, true),
+          existingIds.length > 0
+            ? sql`${users.id} NOT IN (${sql.join(
+                existingIds.map((id: string) => sql`${id}`),
+                sql`, `,
+              )})`
+            : sql`TRUE`,
+          notFriendsYet,
+        ),
+      )
+      .orderBy(desc(users.isVerified), desc(users.followersCount))
+      .limit(remaining);
+
+    return [...sameProvince, ...fallback];
   }
 
   async getPublicProfile(id: string) {

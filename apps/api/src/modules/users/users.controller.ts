@@ -4,6 +4,7 @@ import {
   Patch,
   Param,
   Body,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { UsersService } from "./users.service";
@@ -30,6 +31,19 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   updateMe(@CurrentUser("id") userId: string, @Body() body: any) {
     return this.usersService.updateProfile(userId, body);
+  }
+
+  // MUST be declared before @Get(":id") so the literal segments win over the param
+  @Get("search")
+  @UseGuards(JwtAuthGuard)
+  search(@Query("q") q: string, @CurrentUser("id") userId: string) {
+    return this.usersService.searchUsers(q ?? "", userId);
+  }
+
+  @Get("suggestions")
+  @UseGuards(JwtAuthGuard)
+  suggestions(@CurrentUser("id") userId: string) {
+    return this.usersService.suggestFriends(userId);
   }
 
   @Get(":id")
