@@ -312,6 +312,7 @@ export default function EditListingScreen() {
               const msg =
                 err instanceof Error ? err.message : "Try again.";
               Alert.alert("Delete failed", msg);
+            } finally {
               setSubmitting(null);
             }
           },
