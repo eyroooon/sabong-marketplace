@@ -14,4 +14,5 @@ export * from "./follows";
 export * from "./friendships";
 export * from "./chat-participants";
 export * from "./message-reactions";
+export * from "./video-listings";
 export * from "./otp-codes";

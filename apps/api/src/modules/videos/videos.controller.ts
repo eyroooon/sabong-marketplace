@@ -17,6 +17,7 @@ import { VideosService } from "./videos.service";
 import { CreateVideoDto } from "./dto/create-video.dto";
 import { FeedQueryDto } from "./dto/feed-query.dto";
 import { CreateCommentDto } from "./dto/create-comment.dto";
+import { TagListingsDto } from "./dto/tag-listings.dto";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { SanitizePipe } from "../../common/pipes/sanitize.pipe";
@@ -135,5 +136,30 @@ export class VideosController {
   @Post(":id/share")
   share(@Param("id") videoId: string) {
     return this.videosService.share(videoId);
+  }
+
+  // -------------------- Shoppable Reels --------------------
+
+  @Post(":id/tag-listings")
+  @UseGuards(JwtAuthGuard)
+  tagListings(
+    @Param("id") videoId: string,
+    @CurrentUser("id") userId: string,
+    @Body() dto: TagListingsDto,
+  ) {
+    return this.videosService.tagListings(videoId, userId, dto.listingIds);
+  }
+
+  @Get(":id/tagged-listings")
+  taggedListings(@Param("id") videoId: string) {
+    return this.videosService.getTaggedListings(videoId);
+  }
+
+  @Post(":id/listings/:listingId/click")
+  trackClick(
+    @Param("id") videoId: string,
+    @Param("listingId") listingId: string,
+  ) {
+    return this.videosService.trackShopClick(videoId, listingId);
   }
 }

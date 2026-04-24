@@ -15,7 +15,9 @@ import {
   users,
   listings,
   sellerProfiles,
+  videoListings,
 } from "../../database/schema";
+import { inArray, asc } from "drizzle-orm";
 import { CreateVideoDto } from "./dto/create-video.dto";
 import { FeedQueryDto } from "./dto/feed-query.dto";
 import { CreateCommentDto } from "./dto/create-comment.dto";
@@ -192,6 +194,13 @@ export class VideosService {
           isLiked = !!like;
         }
 
+        // How many listings are tagged in this reel (for 🛒 shop pill)
+        const [tagCount] = await this.db
+          .select({ count: sql<number>`count(*)` })
+          .from(videoListings)
+          .where(eq(videoListings.videoId, row.id));
+        const taggedListingCount = Number(tagCount?.count || 0);
+
         return {
           id: row.id,
           userId: row.userId,
@@ -204,6 +213,7 @@ export class VideosService {
           commentCount: row.commentCount,
           createdAt: row.createdAt,
           isLiked,
+          taggedListingCount,
           user: {
             id: row.userId,
             firstName: row.userFirstName,
@@ -542,5 +552,126 @@ export class VideosService {
       .where(eq(videos.id, videoId));
 
     return { message: "Shared" };
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Shoppable reels — tag listings in videos so viewers can buy.
+  // ──────────────────────────────────────────────────────────────
+
+  /**
+   * Replace all tagged listings on a video with the provided set.
+   * Only the video owner can tag. Only their OWN listings may be tagged.
+   * Max 5 tagged listings per video.
+   */
+  async tagListings(
+    videoId: string,
+    userId: string,
+    listingIds: string[],
+  ) {
+    if (listingIds.length > 5) {
+      throw new BadRequestException("Max 5 tagged listings per video");
+    }
+
+    const [video] = await this.db
+      .select()
+      .from(videos)
+      .where(eq(videos.id, videoId))
+      .limit(1);
+    if (!video) throw new NotFoundException("Video not found");
+    if (video.userId !== userId) {
+      throw new ForbiddenException("Only the creator can tag listings");
+    }
+
+    if (listingIds.length > 0) {
+      // Look up the seller profile for this user
+      const [seller] = await this.db
+        .select({ id: sellerProfiles.id })
+        .from(sellerProfiles)
+        .where(eq(sellerProfiles.userId, userId))
+        .limit(1);
+      if (!seller) {
+        throw new ForbiddenException(
+          "You need a seller profile to tag listings",
+        );
+      }
+
+      const ownedListings = await this.db
+        .select({ id: listings.id })
+        .from(listings)
+        .where(
+          and(
+            inArray(listings.id, listingIds),
+            eq(listings.sellerId, seller.id),
+          ),
+        );
+
+      if (ownedListings.length !== listingIds.length) {
+        throw new ForbiddenException(
+          "Can only tag listings you own as a seller",
+        );
+      }
+    }
+
+    // Clear existing tags then re-insert in the requested order
+    await this.db
+      .delete(videoListings)
+      .where(eq(videoListings.videoId, videoId));
+
+    if (listingIds.length > 0) {
+      await this.db.insert(videoListings).values(
+        listingIds.map((lid, i) => ({
+          videoId,
+          listingId: lid,
+          displayOrder: i,
+        })),
+      );
+    }
+
+    return { tagged: listingIds.length };
+  }
+
+  /**
+   * Get the list of tagged listings for a video, ordered by displayOrder.
+   * Returns enriched listing info ready for the shop sheet UI.
+   */
+  async getTaggedListings(videoId: string) {
+    const rows = await this.db
+      .select({
+        videoListing: videoListings,
+        listing: listings,
+      })
+      .from(videoListings)
+      .innerJoin(listings, eq(listings.id, videoListings.listingId))
+      .where(eq(videoListings.videoId, videoId))
+      .orderBy(asc(videoListings.displayOrder));
+
+    return rows.map((r: any) => ({
+      id: r.listing.id,
+      slug: r.listing.slug,
+      title: r.listing.title,
+      breed: r.listing.breed,
+      price: r.listing.price,
+      primaryImageUrl: r.listing.primaryImageUrl,
+      status: r.listing.status,
+      displayOrder: r.videoListing.displayOrder,
+      clickCount: r.videoListing.clickCount,
+    }));
+  }
+
+  /**
+   * Increment the click counter when a viewer taps a tagged listing
+   * from the video shop sheet. Used for creator commerce analytics.
+   */
+  async trackShopClick(videoId: string, listingId: string) {
+    await this.db
+      .update(videoListings)
+      .set({ clickCount: sql`${videoListings.clickCount} + 1` })
+      .where(
+        and(
+          eq(videoListings.videoId, videoId),
+          eq(videoListings.listingId, listingId),
+        ),
+      );
+    return { ok: true };
   }
 }
