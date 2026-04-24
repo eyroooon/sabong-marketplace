@@ -78,6 +78,15 @@ export default function LoginScreen() {
             onChangeText={setPassword}
           />
 
+          <Pressable
+            onPress={() => router.push("/forgot-password")}
+            style={styles.forgotBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Forgot password"
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </Pressable>
+
           <Button variant="primary" fullWidth loading={loading} onPress={handleSubmit}>
             Sign In
           </Button>
@@ -160,5 +169,14 @@ const styles = StyleSheet.create({
   switchTextLink: {
     color: colors.primary,
     fontWeight: fontWeight.bold,
+  },
+  forgotBtn: {
+    alignSelf: "flex-end",
+    paddingVertical: 4,
+  },
+  forgotText: {
+    color: colors.primary,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
   },
 });
