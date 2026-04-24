@@ -18,6 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useConversationMessages,
   useSendMessage,
+  useToggleReaction,
   uploadChatMedia,
   formatRelativeTime,
   type Message,
@@ -41,6 +42,7 @@ import {
   VoiceRecorder,
   type RecordedClip,
 } from "@/components/chat/VoiceRecorder";
+import { ReactionPicker } from "@/components/chat/ReactionPicker";
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -49,6 +51,8 @@ export default function ChatScreen() {
   const qc = useQueryClient();
   const [draft, setDraft] = useState("");
   const [voiceSending, setVoiceSending] = useState(false);
+  const [reactionTarget, setReactionTarget] = useState<string | null>(null);
+  const toggleReaction = useToggleReaction(id!);
 
   useChatSocket(qc);
 
@@ -163,6 +167,10 @@ export default function ChatScreen() {
               <MessageBubble
                 message={item}
                 isMine={item.senderId === user?.id}
+                onLongPress={() => setReactionTarget(item.id)}
+                onToggleReaction={(emoji) =>
+                  toggleReaction.mutate({ messageId: item.id, emoji })
+                }
               />
             )}
           />
@@ -222,6 +230,14 @@ export default function ChatScreen() {
           )}
         </View>
       </SafeAreaView>
+      <ReactionPicker
+        visible={reactionTarget !== null}
+        onClose={() => setReactionTarget(null)}
+        onPick={(emoji) => {
+          if (!reactionTarget) return;
+          toggleReaction.mutate({ messageId: reactionTarget, emoji });
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -229,9 +245,13 @@ export default function ChatScreen() {
 function MessageBubble({
   message,
   isMine,
+  onLongPress,
+  onToggleReaction,
 }: {
   message: Message;
   isMine: boolean;
+  onLongPress: () => void;
+  onToggleReaction: (emoji: string) => void;
 }) {
   const isOffer = message.messageType === "offer";
   const isVoice = message.messageType === "voice";
@@ -248,7 +268,9 @@ function MessageBubble({
   }
 
   return (
-    <View
+    <Pressable
+      onLongPress={onLongPress}
+      delayLongPress={350}
       style={[
         styles.bubbleRow,
         isMine ? styles.bubbleRowRight : styles.bubbleRowLeft,
@@ -322,10 +344,16 @@ function MessageBubble({
         {hasReactions && (
           <View style={styles.reactionsRow}>
             {Object.entries(message.reactions!).map(([emoji, info]) => (
-              <View key={emoji} style={styles.reactionPill}>
+              <Pressable
+                key={emoji}
+                onPress={() => onToggleReaction(emoji)}
+                accessibilityRole="button"
+                accessibilityLabel={`Toggle ${emoji} reaction`}
+                style={styles.reactionPill}
+              >
                 <Text style={styles.reactionEmoji}>{emoji}</Text>
                 <Text style={styles.reactionCount}>{info.count}</Text>
-              </View>
+              </Pressable>
             ))}
           </View>
         )}
@@ -339,7 +367,7 @@ function MessageBubble({
           {formatRelativeTime(message.createdAt)}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
