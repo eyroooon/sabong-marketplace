@@ -26,6 +26,10 @@ import {
   messages,
   notifications,
   favorites,
+  friendships,
+  chatParticipants,
+  messageReactions,
+  videoListings,
 } from "../schema";
 import {
   DEMO_PASSWORD,
@@ -81,8 +85,20 @@ async function run() {
   console.log("🤝 Seeding follows…");
   await seedFollows(db, userIdByKey);
 
+  console.log("👫 Seeding friendships…");
+  await seedFriendships(db, userIdByKey);
+
   console.log("💌 Seeding conversations + messages…");
   await seedConversations(db, userIdByKey, listingIdBySlug);
+
+  console.log("💬 Seeding 1:1 DMs with reactions…");
+  await seedDms(db, userIdByKey);
+
+  console.log("👥 Seeding group chat (Kelso Circle)…");
+  await seedGroupChats(db, userIdByKey);
+
+  console.log("🛒 Seeding shoppable reels (video→listing tags)…");
+  await seedVideoListings(db, videoIdByKey, listingIdBySlug);
 
   console.log("📦 Seeding orders + payments…");
   const orderIdByKey = await seedOrders(
@@ -115,6 +131,12 @@ async function wipeData(db: ReturnType<typeof drizzle>) {
   await db.execute(sql`DELETE FROM notifications`);
   await db.execute(sql`DELETE FROM favorites`);
   await db.execute(sql`DELETE FROM reports`);
+  // Phase 1 new tables
+  await db.execute(sql`DELETE FROM message_reactions`);
+  await db.execute(sql`DELETE FROM chat_participants`);
+  await db.execute(sql`DELETE FROM video_listings`);
+  await db.execute(sql`DELETE FROM friendships`);
+  // Original tables
   await db.execute(sql`DELETE FROM video_comments`);
   await db.execute(sql`DELETE FROM video_likes`);
   await db.execute(sql`DELETE FROM videos`);
@@ -468,12 +490,18 @@ async function seedConversations(
     const buyerId = userIdByKey.get(c.buyerKey)!;
     const sellerId = userIdByKey.get(c.sellerKey)!;
 
+    const sellerUnread = c.messages.filter(
+      (m) => m.fromKey === c.buyerKey,
+    ).length;
+
     const [conv] = await db
       .insert(conversations)
       .values({
+        type: "listing",
         listingId,
         buyerId,
         sellerId,
+        createdById: buyerId,
         lastMessagePreview: c.messages[c.messages.length - 1].content.slice(
           0,
           120,
@@ -483,11 +511,25 @@ async function seedConversations(
             c.messages[c.messages.length - 1].minutesAgo * 60 * 1000,
         ),
         buyerUnreadCount: 0,
-        sellerUnreadCount: c.messages.filter(
-          (m) => m.fromKey === c.buyerKey,
-        ).length, // seller hasn't read buyer's messages yet
+        sellerUnreadCount: sellerUnread,
       })
       .returning({ id: conversations.id });
+
+    // Phase 1: insert chat_participants for polymorphic chat system
+    await db.insert(chatParticipants).values([
+      {
+        conversationId: conv.id,
+        userId: buyerId,
+        role: "member",
+        unreadCount: 0,
+      },
+      {
+        conversationId: conv.id,
+        userId: sellerId,
+        role: "member",
+        unreadCount: sellerUnread,
+      },
+    ]);
 
     for (const m of c.messages) {
       const senderId = userIdByKey.get(m.fromKey)!;
@@ -523,7 +565,8 @@ async function seedOrders(
     const itemPrice = listingSpec.price;
     const shippingFee = 600;
     const platformFee = Math.round(itemPrice * 0.05);
-    const totalAmount = itemPrice + shippingFee + platformFee;
+    // Buyer pays item + shipping only; platform fee is deducted from seller on payout.
+    const totalAmount = itemPrice + shippingFee;
 
     // Timeline (fake but believable)
     let paidAt: Date | null = null;
@@ -653,6 +696,376 @@ async function seedNotifications(
   }
 }
 
+// ──────────────────────────────────────────────────────────────
+// Phase 1 — Social Commerce Stack seeds
+// ──────────────────────────────────────────────────────────────
+
+function canonicalPair(idA: string, idB: string) {
+  return idA < idB
+    ? { userAId: idA, userBId: idB }
+    : { userAId: idB, userBId: idA };
+}
+
+/** Seed friend relationships between demo users. */
+async function seedFriendships(
+  db: ReturnType<typeof drizzle>,
+  userIdByKey: Map<DemoUserKey, string>,
+) {
+  const pedro = userIdByKey.get("buyer_pedro")!;
+  const reylyn = userIdByKey.get("buyer_reylyn")!;
+  const mang = userIdByKey.get("seller_tomas")!;
+  const kelso = userIdByKey.get("seller_kelsofarm")!;
+  const mike = userIdByKey.get("seller_mike")!;
+
+  type F = {
+    aKey: string;
+    bKey: string;
+    a: string;
+    b: string;
+    status: "accepted" | "pending";
+    requestedById: string;
+  };
+  const pairs: F[] = [
+    // Accepted friends
+    {
+      aKey: "pedro",
+      bKey: "reylyn",
+      a: pedro,
+      b: reylyn,
+      status: "accepted",
+      requestedById: pedro,
+    },
+    {
+      aKey: "mang",
+      bKey: "pedro",
+      a: mang,
+      b: pedro,
+      status: "accepted",
+      requestedById: mang,
+    },
+    {
+      aKey: "kelso",
+      bKey: "mang",
+      a: kelso,
+      b: mang,
+      status: "accepted",
+      requestedById: kelso,
+    },
+    // Pending request — Mike asked Mang Tomas to be friends
+    {
+      aKey: "mike",
+      bKey: "mang",
+      a: mike,
+      b: mang,
+      status: "pending",
+      requestedById: mike,
+    },
+  ];
+
+  const friendBumpCounts = new Map<string, number>();
+
+  for (const p of pairs) {
+    const { userAId, userBId } = canonicalPair(p.a, p.b);
+    await db.insert(friendships).values({
+      userAId,
+      userBId,
+      status: p.status,
+      requestedById: p.requestedById,
+      acceptedAt: p.status === "accepted" ? new Date() : null,
+    });
+
+    if (p.status === "accepted") {
+      friendBumpCounts.set(
+        p.a,
+        (friendBumpCounts.get(p.a) || 0) + 1,
+      );
+      friendBumpCounts.set(
+        p.b,
+        (friendBumpCounts.get(p.b) || 0) + 1,
+      );
+    }
+  }
+
+  // Update denormalized friends_count on users
+  for (const [userId, count] of friendBumpCounts.entries()) {
+    await db
+      .update(users)
+      .set({ friendsCount: count })
+      .where(sql`${users.id} = ${userId}`);
+  }
+}
+
+/** Seed a 1:1 DM between Pedro and Mang Tomas with mixed message types. */
+async function seedDms(
+  db: ReturnType<typeof drizzle>,
+  userIdByKey: Map<DemoUserKey, string>,
+) {
+  const pedro = userIdByKey.get("buyer_pedro")!;
+  const mang = userIdByKey.get("seller_tomas")!;
+
+  // Create DM conversation
+  const [conv] = await db
+    .insert(conversations)
+    .values({
+      type: "dm",
+      createdById: pedro,
+      lastMessageAt: new Date(Date.now() - 3 * 60 * 1000),
+      lastMessagePreview:
+        "Salamat kuya! See you sa derby sa Sabado 🏆",
+    })
+    .returning({ id: conversations.id });
+
+  await db.insert(chatParticipants).values([
+    {
+      conversationId: conv.id,
+      userId: pedro,
+      role: "member",
+      unreadCount: 0,
+    },
+    {
+      conversationId: conv.id,
+      userId: mang,
+      role: "member",
+      unreadCount: 2,
+    },
+  ]);
+
+  type DmMsg = {
+    from: string;
+    content: string;
+    minutesAgo: number;
+    type?: string;
+    mediaUrl?: string;
+    mediaDurationMs?: number;
+  };
+  const dmMessages: DmMsg[] = [
+    {
+      from: mang,
+      content: "Kumusta pare! May bagong batch of Kelso stags ako ngayong week.",
+      minutesAgo: 180,
+    },
+    {
+      from: pedro,
+      content: "Talaga? Pwede ba akong makakita ng video?",
+      minutesAgo: 176,
+    },
+    {
+      from: mang,
+      content: "",
+      minutesAgo: 172,
+      type: "voice",
+      mediaUrl: "/uploads/audio/demo-voice-note-1.webm",
+      mediaDurationMs: 8500,
+    },
+    {
+      from: pedro,
+      content: "Ang angas ng tuka! Magkano ba 'yung 7-month stag?",
+      minutesAgo: 168,
+    },
+    {
+      from: mang,
+      content: "₱12,000 lang — for you kaibigan. May pedigree proof ako.",
+      minutesAgo: 164,
+    },
+    {
+      from: pedro,
+      content: "Sige — ibababa ko bukas ng umaga. Cebu City po kami.",
+      minutesAgo: 18,
+    },
+    {
+      from: pedro,
+      content: "Salamat kuya! See you sa derby sa Sabado 🏆",
+      minutesAgo: 3,
+    },
+  ];
+
+  const insertedMessages: { id: string; from: string }[] = [];
+  for (const m of dmMessages) {
+    const [row] = await db
+      .insert(messages)
+      .values({
+        conversationId: conv.id,
+        senderId: m.from,
+        content: m.content,
+        messageType: m.type || "text",
+        mediaUrl: m.mediaUrl,
+        mediaDurationMs: m.mediaDurationMs,
+        isRead: m.minutesAgo > 5, // recent messages still unread
+        createdAt: new Date(Date.now() - m.minutesAgo * 60 * 1000),
+      })
+      .returning({ id: messages.id });
+    insertedMessages.push({ id: row.id, from: m.from });
+  }
+
+  // Seed a few reactions on the voice note and a chat message
+  const voiceMsg = insertedMessages[2]; // voice note from Mang
+  if (voiceMsg) {
+    await db.insert(messageReactions).values({
+      messageId: voiceMsg.id,
+      userId: pedro,
+      emoji: "🔥",
+    });
+  }
+  const salamatMsg = insertedMessages[insertedMessages.length - 1];
+  if (salamatMsg) {
+    await db.insert(messageReactions).values({
+      messageId: salamatMsg.id,
+      userId: mang,
+      emoji: "🏆",
+    });
+  }
+}
+
+/** Seed a 3-person group chat ('Kelso Circle'). */
+async function seedGroupChats(
+  db: ReturnType<typeof drizzle>,
+  userIdByKey: Map<DemoUserKey, string>,
+) {
+  const pedro = userIdByKey.get("buyer_pedro")!;
+  const mang = userIdByKey.get("seller_tomas")!;
+  const kelso = userIdByKey.get("seller_kelsofarm")!;
+  const reylyn = userIdByKey.get("buyer_reylyn")!;
+
+  const [conv] = await db
+    .insert(conversations)
+    .values({
+      type: "group",
+      title: "Kelso Circle",
+      createdById: mang,
+      lastMessageAt: new Date(Date.now() - 30 * 60 * 1000),
+      lastMessagePreview: "Sabado game night tayo sa Pampanga 🎰",
+    })
+    .returning({ id: conversations.id });
+
+  await db.insert(chatParticipants).values([
+    { conversationId: conv.id, userId: mang, role: "owner", unreadCount: 0 },
+    {
+      conversationId: conv.id,
+      userId: pedro,
+      role: "member",
+      unreadCount: 0,
+    },
+    {
+      conversationId: conv.id,
+      userId: kelso,
+      role: "admin",
+      unreadCount: 0,
+    },
+    {
+      conversationId: conv.id,
+      userId: reylyn,
+      role: "member",
+      unreadCount: 1,
+    },
+  ]);
+
+  type GroupMsg = {
+    from: string;
+    content: string;
+    minutesAgo: number;
+    type?: string;
+  };
+  const groupMessages: GroupMsg[] = [
+    {
+      from: mang,
+      content: "Mang Tomas created the group",
+      minutesAgo: 1440,
+      type: "system",
+    },
+    {
+      from: mang,
+      content:
+        "Welcome, Kelso breeders! 🐓 Para ito sa pure Kelso line lang.",
+      minutesAgo: 1435,
+    },
+    {
+      from: kelso,
+      content: "Salamat sa invite, Mang Tomas! Excited sa community.",
+      minutesAgo: 1430,
+    },
+    {
+      from: pedro,
+      content: "Wow, Kelso Circle. Dito ako mag-aask ng tips 🙏",
+      minutesAgo: 1420,
+    },
+    {
+      from: reylyn,
+      content: "Question — pwede ba cross-breed ng Sweater sa Kelso?",
+      minutesAgo: 120,
+    },
+    {
+      from: mang,
+      content:
+        "Possible pero mas puro ang result pag direct line. May bagong batch ako — galing sa Sultan line.",
+      minutesAgo: 60,
+    },
+    {
+      from: kelso,
+      content: "Sabado game night tayo sa Pampanga 🎰",
+      minutesAgo: 30,
+    },
+  ];
+
+  for (const m of groupMessages) {
+    await db.insert(messages).values({
+      conversationId: conv.id,
+      senderId: m.from,
+      content: m.content,
+      messageType: m.type || "text",
+      isRead: m.minutesAgo > 45,
+      createdAt: new Date(Date.now() - m.minutesAgo * 60 * 1000),
+    });
+  }
+}
+
+/** Tag listings in existing videos for shoppable reels. */
+async function seedVideoListings(
+  db: ReturnType<typeof drizzle>,
+  videoIdByKey: Map<string, string>,
+  listingIdBySlug: Map<string, string>,
+) {
+  // Try to infer what each video should tag by matching creator's listings.
+  // For simplicity: tag every video whose creator has active listings
+  // with 1-2 of that creator's listings.
+  const videoKeys = Array.from(videoIdByKey.keys());
+  const slugs = Array.from(listingIdBySlug.keys());
+
+  for (let i = 0; i < videoKeys.length; i++) {
+    const videoId = videoIdByKey.get(videoKeys[i])!;
+
+    // Fetch the video's owner and their listings via SQL
+    const [videoRow] = await db.execute(sql`
+      SELECT user_id FROM videos WHERE id = ${videoId}
+    `);
+    if (!videoRow) continue;
+    const ownerId = (videoRow as any).user_id;
+
+    const ownedListings: any[] = (await db.execute(sql`
+      SELECT l.id FROM listings l
+      JOIN seller_profiles s ON s.id = l.seller_id
+      WHERE s.user_id = ${ownerId}
+      LIMIT 3
+    `)) as any[];
+
+    if (ownedListings.length === 0) continue;
+
+    // Tag 1-2 listings per video
+    const toTag = ownedListings.slice(0, Math.min(2, ownedListings.length));
+    for (let j = 0; j < toTag.length; j++) {
+      await db
+        .insert(videoListings)
+        .values({
+          videoId,
+          listingId: toTag[j].id,
+          displayOrder: j,
+          clickCount: Math.floor(Math.random() * 50),
+        })
+        .onConflictDoNothing();
+    }
+  }
+  void slugs;
+}
+
 function printSummary() {
   console.log("╔════════════════════════════════════════════════╗");
   console.log("║           🎬  DEMO DATA SUMMARY                ║");
@@ -665,6 +1078,10 @@ function printSummary() {
   console.log(`  💌 Conversations:  ${DEMO_CONVERSATIONS.length}`);
   console.log(`  ⭐ Reviews:        ${DEMO_REVIEWS.length}`);
   console.log(`  🤝 Follows:        ${DEMO_FOLLOWS.length}`);
+  console.log(`  👫 Friendships:    4 (3 accepted + 1 pending)`);
+  console.log(`  💬 DMs:            1 Pedro↔Mang (7 msgs + 2 reactions)`);
+  console.log(`  👥 Group chats:    1 Kelso Circle (4 members)`);
+  console.log(`  🛒 Shoppable reels: tagged across all videos`);
   console.log(`  🔔 Notifications:  ${DEMO_NOTIFICATIONS.length}`);
   console.log("\n  All users password: " + DEMO_PASSWORD);
   console.log("\n  Demo accounts:");
