@@ -8,7 +8,12 @@ import {
   Body,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { memoryStorage } from "multer";
 import { MessagesService } from "./messages.service";
 import {
   StartConversationDto,
@@ -21,15 +26,82 @@ import {
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../common/decorators/current-user.decorator";
 import { SanitizePipe } from "../../common/pipes/sanitize.pipe";
+import { StorageService } from "../../common/storage/storage.service";
+
+const ALLOWED_CHAT_MEDIA_MIMES = [
+  // Audio (voice notes)
+  "audio/webm",
+  "audio/mp4",
+  "audio/m4a",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+  "audio/x-m4a",
+  // Images
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  // Video
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+];
 
 @Controller("messages")
 @UseGuards(JwtAuthGuard)
 export class MessagesController {
-  constructor(private messagesService: MessagesService) {}
+  constructor(
+    private messagesService: MessagesService,
+    private storageService: StorageService,
+  ) {}
 
   @Get("conversations")
   getConversations(@CurrentUser("id") userId: string) {
     return this.messagesService.getConversations(userId);
+  }
+
+  /**
+   * Upload chat media (voice note, image, video).
+   * Client uploads the file, gets back a URL, then calls send-message with
+   * mediaUrl + appropriate messageType.
+   *
+   * Limits: 25MB max. Allowed mimetypes: audio/*, image/*, video/*.
+   */
+  @Post("upload")
+  @UseInterceptors(
+    FileInterceptor("file", {
+      storage: memoryStorage(),
+      limits: { fileSize: 25 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (ALLOWED_CHAT_MEDIA_MIMES.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(
+            new BadRequestException(
+              `Unsupported media type: ${file.mimetype}`,
+            ),
+            false,
+          );
+        }
+      },
+    }),
+  )
+  async uploadChatMedia(@UploadedFile() file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException("File is required");
+    }
+    const folder = file.mimetype.startsWith("audio/")
+      ? "audio"
+      : file.mimetype.startsWith("video/")
+        ? "videos"
+        : "chat-media";
+    const url = await this.storageService.uploadFile(file, folder);
+    return {
+      url,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+    };
   }
 
   @Get("conversations/:id")

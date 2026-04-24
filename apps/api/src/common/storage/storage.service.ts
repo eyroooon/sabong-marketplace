@@ -10,7 +10,12 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { v4 as uuidv4 } from "uuid";
 
-export type StorageFolder = "images" | "videos" | "documents";
+export type StorageFolder =
+  | "images"
+  | "videos"
+  | "documents"
+  | "audio"
+  | "chat-media";
 
 @Injectable()
 export class StorageService {
