@@ -90,7 +90,7 @@ export default function VerifyOtpScreen() {
       setError(null);
       const lastFilled = Math.min(pasted.length - 1, OTP_LENGTH - 1);
       inputRefs.current[lastFilled]?.focus();
-      if (pasted.length === OTP_LENGTH) {
+      if (pasted.length === OTP_LENGTH && !loading) {
         void submitCode(next.join(""));
       }
       return;
@@ -107,7 +107,7 @@ export default function VerifyOtpScreen() {
     }
 
     const complete = next.every((d) => d !== "");
-    if (complete) {
+    if (complete && !loading) {
       void submitCode(next.join(""));
     }
   };

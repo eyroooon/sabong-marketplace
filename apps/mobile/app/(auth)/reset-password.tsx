@@ -94,7 +94,7 @@ export default function ResetPasswordScreen() {
           {
             text: "Go to Login",
             onPress: () => {
-              setLoading(false);
+              // No need to setLoading(false) — router.replace unmounts us.
               router.replace("/login");
             },
           },
