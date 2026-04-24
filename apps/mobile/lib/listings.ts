@@ -212,6 +212,7 @@ export function useCreateListing() {
       apiPost<CreateListingResponse>("/listings", input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["listings", "my"] });
+      qc.invalidateQueries({ queryKey: ["users", "me", "stats"] });
     },
   });
 }
@@ -238,6 +239,8 @@ export function useUpdateListing() {
 
 /**
  * Transition a listing from draft → active (publishes it so buyers see it).
+ * Also invalidates /users/me/stats so the dashboard's Active Listings
+ * counter updates immediately (not after the 15-second poll).
  */
 export function usePublishListing() {
   const qc = useQueryClient();
@@ -246,12 +249,15 @@ export function usePublishListing() {
       apiPost<{ id: string }>(`/listings/${id}/publish`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["listings", "my"] });
+      qc.invalidateQueries({ queryKey: ["users", "me", "stats"] });
     },
   });
 }
 
 /**
  * Move a listing to archived (hides from marketplace but preserves history).
+ * Also invalidates /users/me/stats so the dashboard's Active Listings
+ * counter decrements immediately.
  */
 export function useArchiveListing() {
   const qc = useQueryClient();
@@ -260,6 +266,7 @@ export function useArchiveListing() {
       apiPost<{ id: string }>(`/listings/${id}/archive`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["listings", "my"] });
+      qc.invalidateQueries({ queryKey: ["users", "me", "stats"] });
     },
   });
 }
@@ -273,6 +280,7 @@ export function useDeleteListing() {
     mutationFn: ({ id }) => apiDelete<{ ok: boolean }>(`/listings/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["listings", "my"] });
+      qc.invalidateQueries({ queryKey: ["users", "me", "stats"] });
     },
   });
 }
