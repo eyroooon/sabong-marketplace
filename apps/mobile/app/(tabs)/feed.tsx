@@ -30,10 +30,13 @@ import {
   useShareVideo,
   useFollowStatus,
   useFollow,
+  useTaggedListings,
+  trackShopClick,
   formatVideoPrice,
   type Video,
 } from "@/lib/videos";
 import { CommentSheet } from "@/components/feed/CommentSheet";
+import { ShopSheet } from "@/components/feed/ShopSheet";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -176,12 +179,15 @@ function FeedCard({
   const router = useRouter();
   const [liked, setLiked] = useState(video.isLiked ?? false);
   const [likeCount, setLikeCount] = useState(video.likeCount);
+  const [shopOpen, setShopOpen] = useState(false);
 
   const like = useLikeVideo(video.id);
   const share = useShareVideo(video.id);
   const follow = useFollow(video.user.id);
   const { data: followStatus } = useFollowStatus(video.user.id);
   const isFollowing = followStatus?.following ?? false;
+  const { data: taggedListings = [], isLoading: taggedLoading } =
+    useTaggedListings(shopOpen ? video.id : null);
 
   // Video player (expo-video). Play only when card is active.
   const player = useVideoPlayer(video.videoUrl, (p) => {
@@ -263,6 +269,34 @@ function FeedCard({
           {currentIndex + 1} / {totalCount}
         </Text>
       </View>
+
+      {/* Shop pill — tap to open tagged listings sheet */}
+      {(video.taggedListingCount ?? 0) > 0 && (
+        <Pressable style={styles.shopPill} onPress={() => setShopOpen(true)}>
+          <LinearGradient
+            colors={["#fbbf24", "#f97316", "#ef4444"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.shopPillGradient}
+          >
+            <Ionicons name="cart" size={14} color="#fff" />
+            <Text style={styles.shopPillText}>🛒 {video.taggedListingCount}</Text>
+          </LinearGradient>
+        </Pressable>
+      )}
+
+      {/* Shop sheet */}
+      <ShopSheet
+        visible={shopOpen}
+        onClose={() => setShopOpen(false)}
+        listings={taggedListings}
+        loading={taggedLoading}
+        onPick={(listing) => {
+          trackShopClick(video.id, listing.id);
+          setShopOpen(false);
+          router.push(`/listing/${listing.slug}?ref=feed&v=${video.id}`);
+        }}
+      />
 
       {/* Right-side actions */}
       <View style={styles.actions}>
@@ -462,6 +496,30 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 64,
     right: spacing[3],
+  },
+  shopPill: {
+    position: "absolute",
+    top: 64,
+    alignSelf: "center",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 5,
+  },
+  shopPillGradient: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.6)",
+  },
+  shopPillText: {
+    color: "#fff",
+    fontWeight: fontWeight.bold,
+    fontSize: fontSize.xs,
   },
   pageText: {
     fontSize: fontSize.xs,

@@ -55,8 +55,8 @@ export default function NewOrderScreen() {
 
   const itemPrice = Number(listing?.price ?? 0);
   const shippingFee = Number(listing?.shippingFee ?? 0);
-  const platformFee = Math.round(itemPrice * 0.05);
-  const total = itemPrice + shippingFee + platformFee;
+  // Platform fee is shouldered by the seller on payout.
+  const total = itemPrice + shippingFee;
 
   const primaryImage =
     listing?.images?.find((i) => i.isPrimary)?.url ??
@@ -273,16 +273,22 @@ export default function NewOrderScreen() {
                     value={formatOrderPrice(String(shippingFee))}
                   />
                 ) : null}
-                <PriceRow
-                  label="Platform fee (5%)"
-                  value={formatOrderPrice(String(platformFee))}
-                />
                 <View style={styles.divider} />
                 <PriceRow
                   label="Total"
                   value={formatOrderPrice(String(total))}
                   bold
                 />
+                <View style={styles.feeNote}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={14}
+                    color={colors.emerald}
+                  />
+                  <Text style={styles.feeNoteText}>
+                    No platform fee for buyers
+                  </Text>
+                </View>
               </View>
 
               {/* Escrow assurance badge */}
@@ -533,6 +539,16 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.border,
     marginVertical: 6,
+  },
+  feeNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 8,
+  },
+  feeNoteText: {
+    fontSize: fontSize.xs,
+    color: colors.emerald,
   },
   assuranceCard: {
     flexDirection: "row",

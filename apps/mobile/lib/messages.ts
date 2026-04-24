@@ -9,23 +9,35 @@ import {
 } from "@tanstack/react-query";
 import { apiGet, apiPatch, apiPost } from "./api";
 
+export type ConversationType = "listing" | "dm" | "group";
+
 export interface Conversation {
   id: string;
-  listingId: string;
-  buyerId: string;
-  sellerId: string;
+  type: ConversationType;
+  title: string | null;
+  avatarUrl: string | null;
+  listingId: string | null;
+  buyerId: string | null;
+  sellerId: string | null;
   lastMessageAt: string;
   lastMessagePreview: string | null;
   buyerUnreadCount: number;
   sellerUnreadCount: number;
   unreadCount: number; // precomputed by API for current user
+  participantCount?: number; // set for group chats
+  role?: "owner" | "admin" | "member";
   otherUser: {
     id: string;
     firstName: string;
     lastName: string;
+    displayName?: string | null;
     avatarUrl: string | null;
   } | null;
   createdAt: string;
+}
+
+export interface MessageReactions {
+  [emoji: string]: { count: number; userIds: string[] };
 }
 
 export interface Message {
@@ -33,9 +45,25 @@ export interface Message {
   conversationId: string;
   senderId: string;
   content: string;
-  messageType: "text" | "image" | "offer";
+  messageType:
+    | "text"
+    | "image"
+    | "video"
+    | "voice"
+    | "offer"
+    | "listing_share"
+    | "reel_share"
+    | "system";
   offerAmount: string | null;
   offerStatus: "pending" | "accepted" | "rejected" | null;
+  mediaUrl?: string | null;
+  mediaDurationMs?: number | null;
+  mediaWidth?: number | null;
+  mediaHeight?: number | null;
+  replyToMessageId?: string | null;
+  attachedListingId?: string | null;
+  attachedVideoId?: string | null;
+  reactions?: MessageReactions;
   createdAt: string;
 }
 
@@ -99,6 +127,88 @@ export function useStartConversation() {
       qc.invalidateQueries({ queryKey: ["conversations"] });
     },
   });
+}
+
+export function useCreateDm() {
+  const qc = useQueryClient();
+  return useMutation<
+    { conversationId: string; created: boolean },
+    Error,
+    { otherUserId: string }
+  >({
+    mutationFn: (input) =>
+      apiPost<{ conversationId: string; created: boolean }>(
+        "/messages/dm",
+        input,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
+export function useCreateGroup() {
+  const qc = useQueryClient();
+  return useMutation<
+    { conversationId: string },
+    Error,
+    { title: string; memberUserIds: string[] }
+  >({
+    mutationFn: (input) =>
+      apiPost<{ conversationId: string }>("/messages/group", input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
+export function useToggleReaction(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation<
+    { action: "added" | "removed" },
+    Error,
+    { messageId: string; emoji: string }
+  >({
+    mutationFn: (input) =>
+      apiPost<{ action: "added" | "removed" }>(
+        `/messages/${input.messageId}/reactions`,
+        { emoji: input.emoji },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["conversations", conversationId, "messages"],
+      });
+    },
+  });
+}
+
+/** Return a friendly display title for a conversation. */
+export function chatTitle(conv: Conversation): string {
+  if (conv.type === "group") return conv.title || "Group chat";
+  if (conv.otherUser) {
+    return (
+      conv.otherUser.displayName ||
+      `${conv.otherUser.firstName} ${conv.otherUser.lastName}`.trim() ||
+      "User"
+    );
+  }
+  return "User";
+}
+
+export function chatAvatarLetter(conv: Conversation): string {
+  if (conv.type === "group") return conv.title?.[0]?.toUpperCase() || "G";
+  return (
+    conv.otherUser?.firstName?.[0]?.toUpperCase() ||
+    conv.otherUser?.displayName?.[0]?.toUpperCase() ||
+    "?"
+  );
+}
+
+export function chatTypeBadge(conv: Conversation): string | null {
+  if (conv.type === "group")
+    return `👥 ${conv.participantCount ?? ""} members`.trim();
+  if (conv.type === "dm") return "💬 Direct";
+  return null;
 }
 
 export function useMarkRead(conversationId: string) {

@@ -40,8 +40,22 @@ export interface Video {
   shareCount: number;
   createdAt: string;
   isLiked?: boolean;
+  taggedListingCount?: number;
   user: VideoCreator;
   listing: VideoListing | null;
+}
+
+/** A listing that a creator tagged in a reel (shoppable reels). */
+export interface TaggedListing {
+  id: string;
+  slug: string;
+  title: string;
+  breed: string | null;
+  price: string;
+  primaryImageUrl: string | null;
+  status: string;
+  displayOrder: number;
+  clickCount: number;
 }
 
 export interface CommentUser {
@@ -172,4 +186,24 @@ export function formatVideoPrice(value: string | number): string {
   const n = typeof value === "string" ? Number(value) : value;
   if (!Number.isFinite(n)) return "";
   return `₱${n.toLocaleString("en-PH", { maximumFractionDigits: 0 })}`;
+}
+
+/** Shoppable reels — fetch listings tagged in a video. */
+export function useTaggedListings(videoId: string | null) {
+  return useQuery<TaggedListing[], Error>({
+    queryKey: ["tagged-listings", videoId],
+    enabled: !!videoId,
+    queryFn: () =>
+      apiGet<TaggedListing[]>(`/videos/${videoId}/tagged-listings`),
+    staleTime: 60_000,
+  });
+}
+
+/** Fire-and-forget click tracker for creator commerce analytics. */
+export async function trackShopClick(videoId: string, listingId: string) {
+  try {
+    await apiPost(`/videos/${videoId}/listings/${listingId}/click`, {});
+  } catch {
+    // analytics failures should never block navigation
+  }
 }

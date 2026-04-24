@@ -173,6 +173,19 @@ function MessageBubble({
   isMine: boolean;
 }) {
   const isOffer = message.messageType === "offer";
+  const isVoice = message.messageType === "voice";
+  const isSystem = message.messageType === "system";
+  const hasReactions =
+    message.reactions && Object.keys(message.reactions).length > 0;
+
+  if (isSystem) {
+    return (
+      <View style={styles.systemRow}>
+        <Text style={styles.systemText}>{message.content}</Text>
+      </View>
+    );
+  }
+
   return (
     <View
       style={[
@@ -193,14 +206,49 @@ function MessageBubble({
             <Text style={styles.offerBadgeText}>OFFER</Text>
           </View>
         ) : null}
-        <Text
-          style={[
-            styles.bubbleText,
-            isMine ? styles.bubbleTextMine : styles.bubbleTextTheirs,
-          ]}
-        >
-          {message.content}
-        </Text>
+
+        {isVoice ? (
+          <View style={styles.voiceRow}>
+            <Ionicons
+              name="mic"
+              size={18}
+              color={isMine ? "#fff" : colors.primary}
+            />
+            <View
+              style={[
+                styles.voiceBar,
+                { backgroundColor: isMine ? "rgba(255,255,255,0.3)" : "#d4d4d8" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.voiceBarFill,
+                  { backgroundColor: isMine ? "#fff" : colors.primary },
+                ]}
+              />
+            </View>
+            <Text
+              style={[
+                styles.voiceDuration,
+                { color: isMine ? "rgba(255,255,255,0.85)" : colors.muted },
+              ]}
+            >
+              {message.mediaDurationMs
+                ? `${Math.round(message.mediaDurationMs / 1000)}s`
+                : ""}
+            </Text>
+          </View>
+        ) : (
+          <Text
+            style={[
+              styles.bubbleText,
+              isMine ? styles.bubbleTextMine : styles.bubbleTextTheirs,
+            ]}
+          >
+            {message.content}
+          </Text>
+        )}
+
         {isOffer && message.offerAmount ? (
           <Text style={styles.offerAmount}>
             ₱
@@ -209,6 +257,18 @@ function MessageBubble({
             })}
           </Text>
         ) : null}
+
+        {hasReactions && (
+          <View style={styles.reactionsRow}>
+            {Object.entries(message.reactions!).map(([emoji, info]) => (
+              <View key={emoji} style={styles.reactionPill}>
+                <Text style={styles.reactionEmoji}>{emoji}</Text>
+                <Text style={styles.reactionCount}>{info.count}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
         <Text
           style={[
             styles.bubbleTime,
@@ -331,6 +391,61 @@ const styles = StyleSheet.create({
   },
   bubbleTimeTheirs: {
     color: colors.muted,
+  },
+  systemRow: {
+    alignItems: "center",
+    marginVertical: 6,
+  },
+  systemText: {
+    fontSize: 11,
+    fontStyle: "italic",
+    color: colors.muted,
+    textAlign: "center",
+  },
+  voiceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 160,
+    paddingVertical: 2,
+  },
+  voiceBar: {
+    flex: 1,
+    height: 3,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  voiceBarFill: {
+    height: "100%",
+    width: "35%",
+    borderRadius: 2,
+  },
+  voiceDuration: {
+    fontSize: 11,
+    fontVariant: ["tabular-nums"],
+  },
+  reactionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    marginTop: 4,
+  },
+  reactionPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.9)",
+  },
+  reactionEmoji: {
+    fontSize: 11,
+  },
+  reactionCount: {
+    fontSize: 10,
+    fontWeight: fontWeight.semibold,
+    color: colors.foreground,
   },
   offerBadge: {
     flexDirection: "row",

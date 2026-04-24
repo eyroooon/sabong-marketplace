@@ -15,6 +15,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useConversations,
   formatRelativeTime,
+  chatTitle,
+  chatAvatarLetter,
+  chatTypeBadge,
   type Conversation,
 } from "@/lib/messages";
 import { useChatSocket } from "@/lib/socket";
@@ -140,11 +143,22 @@ function ConversationRow({
   conversation: Conversation;
   onPress: () => void;
 }) {
-  const other = conversation.otherUser;
-  const name = other
-    ? `${other.firstName} ${other.lastName}`.trim() || "User"
-    : "User";
+  const name = chatTitle(conversation);
   const hasUnread = (conversation.unreadCount ?? 0) > 0;
+  const badge = chatTypeBadge(conversation);
+
+  const avatarBg =
+    conversation.type === "group"
+      ? "#fef3c7" // amber tint
+      : conversation.type === "dm"
+        ? "#dbeafe" // blue tint
+        : "#fee2e2"; // red tint (listing)
+  const avatarFg =
+    conversation.type === "group"
+      ? "#b45309" // dark amber
+      : conversation.type === "dm"
+        ? "#1d4ed8" // deep blue
+        : colors.primary;
 
   return (
     <Pressable
@@ -154,8 +168,10 @@ function ConversationRow({
         pressed && { backgroundColor: colors.mutedBg },
       ]}
     >
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{name.charAt(0).toUpperCase()}</Text>
+      <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
+        <Text style={[styles.avatarText, { color: avatarFg }]}>
+          {chatAvatarLetter(conversation)}
+        </Text>
       </View>
 
       <View style={styles.rowBody}>
@@ -170,6 +186,12 @@ function ConversationRow({
             {formatRelativeTime(conversation.lastMessageAt)}
           </Text>
         </View>
+
+        {badge && (
+          <Text style={styles.rowBadge} numberOfLines={1}>
+            {badge}
+          </Text>
+        )}
 
         <View style={styles.rowBottom}>
           <Text
@@ -265,10 +287,18 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.muted,
   },
+  rowBadge: {
+    fontSize: 10,
+    fontWeight: fontWeight.semibold,
+    color: colors.muted,
+    marginTop: 1,
+    letterSpacing: 0.5,
+  },
   rowBottom: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    marginTop: 2,
   },
   rowPreview: {
     fontSize: fontSize.sm,

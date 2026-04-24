@@ -499,16 +499,46 @@ export default function OrderDetailScreen() {
               value={formatOrderPrice(order.shippingFee)}
             />
           ) : null}
-          <Row
-            label="Platform fee (5%)"
-            value={formatOrderPrice(order.platformFee)}
-          />
+          {isSeller ? (
+            <Row
+              label="- Platform fee (5%)"
+              value={`- ${formatOrderPrice(order.platformFee)}`}
+              negative
+            />
+          ) : null}
           <View style={styles.priceDivider} />
-          <Row
-            label="Total"
-            value={formatOrderPrice(order.totalAmount)}
-            bold
-          />
+          {isSeller ? (
+            <Row
+              label="Your Payout"
+              value={formatOrderPrice(
+                String(
+                  Number(order.itemPrice) +
+                    Number(order.shippingFee || 0) -
+                    Number(order.platformFee || 0),
+                ),
+              )}
+              bold
+              positive
+            />
+          ) : (
+            <Row
+              label={isBuyer ? "Total Paid" : "Total"}
+              value={formatOrderPrice(order.totalAmount)}
+              bold
+            />
+          )}
+          {isBuyer ? (
+            <View style={styles.feeNote}>
+              <Ionicons
+                name="checkmark-circle"
+                size={12}
+                color={colors.emerald}
+              />
+              <Text style={styles.feeNoteText}>
+                No platform fee for buyers
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Delivery */}
@@ -1009,17 +1039,43 @@ function Row({
   label,
   value,
   bold,
+  negative,
+  positive,
 }: {
   label: string;
   value: string;
   bold?: boolean;
+  negative?: boolean;
+  positive?: boolean;
 }) {
+  const labelColor = negative
+    ? "#dc2626"
+    : positive
+      ? colors.emerald
+      : undefined;
+  const valueColor = negative
+    ? "#dc2626"
+    : positive
+      ? colors.emerald
+      : undefined;
   return (
     <View style={styles.row}>
-      <Text style={[styles.rowLabel, bold && styles.rowLabelBold]}>
+      <Text
+        style={[
+          styles.rowLabel,
+          bold && styles.rowLabelBold,
+          labelColor ? { color: labelColor } : null,
+        ]}
+      >
         {label}
       </Text>
-      <Text style={[styles.rowValue, bold && styles.rowValueBold]}>
+      <Text
+        style={[
+          styles.rowValue,
+          bold && styles.rowValueBold,
+          valueColor ? { color: valueColor } : null,
+        ]}
+      >
         {value}
       </Text>
     </View>
@@ -1309,6 +1365,16 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.border,
     marginVertical: 6,
+  },
+  feeNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+  },
+  feeNoteText: {
+    fontSize: fontSize.xs,
+    color: colors.emerald,
   },
   address: {
     fontSize: fontSize.base,
