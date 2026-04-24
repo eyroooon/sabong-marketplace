@@ -50,7 +50,7 @@ export function ImagePickerGrid({
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       allowsMultipleSelection: true,
       selectionLimit: max - images.length,
       quality: 0.85,
@@ -72,7 +72,7 @@ export function ImagePickerGrid({
     <View>
       <View style={styles.grid}>
         {images.map((img, idx) => (
-          <View key={img.uri} style={styles.tile}>
+          <View key={`${img.uri}-${idx}`} style={styles.tile}>
             <Image source={{ uri: img.uri }} style={styles.tileImg} />
             {idx === 0 ? (
               <View style={styles.primaryBadge}>
