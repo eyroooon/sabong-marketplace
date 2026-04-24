@@ -123,6 +123,8 @@ export default function CreateListingScreen() {
         await publishListing.mutateAsync({ id: created.id });
       }
 
+      // Keep the overlay visible until the user dismisses the alert.
+      // Resetting is deferred to the alert's onPress callback.
       Alert.alert(
         mode === "publish" ? "Published!" : "Saved as draft",
         mode === "publish"
@@ -131,18 +133,25 @@ export default function CreateListingScreen() {
         [
           {
             text: "View My Listings",
-            onPress: () => router.replace("/seller/listings"),
+            onPress: () => {
+              setSubmitting(null);
+              setStage(null);
+              router.replace("/seller/listings");
+            },
           },
         ],
+        { cancelable: false },
       );
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : "Please try again.";
       Alert.alert("Save failed", msg);
-    } finally {
       setSubmitting(null);
       setStage(null);
     }
+    // NOTE: no finally block — we want the overlay to persist past the
+    // end of this async function on success, and dismissed state is
+    // handled inline in each branch.
   };
 
   const busy = submitting !== null;
