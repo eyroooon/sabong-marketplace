@@ -88,6 +88,11 @@ export default function ProfileScreen() {
             onPress={() => router.push("/groups")}
           />
           <MenuItem
+            icon="notifications-outline"
+            label="Notifications"
+            onPress={() => router.push("/notifications")}
+          />
+          <MenuItem
             icon="heart-outline"
             label="Favorites"
             onPress={() => router.push("/favorites")}
