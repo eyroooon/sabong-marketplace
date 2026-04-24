@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useConversationMessages,
   useSendMessage,
+  uploadChatMedia,
   formatRelativeTime,
   type Message,
 } from "@/lib/messages";
@@ -33,6 +35,10 @@ import {
   radii,
   spacing,
 } from "@/lib/theme";
+import {
+  VoiceRecorder,
+  type RecordedClip,
+} from "@/components/chat/VoiceRecorder";
 
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -40,6 +46,7 @@ export default function ChatScreen() {
   const user = useAuth((s) => s.user);
   const qc = useQueryClient();
   const [draft, setDraft] = useState("");
+  const [voiceSending, setVoiceSending] = useState(false);
 
   useChatSocket(qc);
 
@@ -70,6 +77,31 @@ export default function ChatScreen() {
         onSuccess: () => setDraft(""),
       },
     );
+  };
+
+  const handleRecorded = async (clip: RecordedClip) => {
+    if (!id) return;
+    setVoiceSending(true);
+    try {
+      const uploaded = await uploadChatMedia({
+        uri: clip.uri,
+        name: `voice-${Date.now()}.m4a`,
+        mimeType: clip.mimeType,
+      });
+      await sendMessage.mutateAsync({
+        content: "",
+        messageType: "voice",
+        mediaUrl: uploaded.url,
+        mediaDurationMs: clip.durationSec * 1000,
+      });
+    } catch (err) {
+      Alert.alert(
+        "Send failed",
+        err instanceof Error ? err.message : "Could not send voice note. Please try again.",
+      );
+    } finally {
+      setVoiceSending(false);
+    }
   };
 
   return (
@@ -144,21 +176,34 @@ export default function ChatScreen() {
             returnKeyType="send"
             onSubmitEditing={handleSend}
           />
-          <Pressable
-            onPress={handleSend}
-            disabled={!draft.trim() || sendMessage.isPending}
-            style={({ pressed }) => [
-              styles.sendBtn,
-              (!draft.trim() || sendMessage.isPending) && styles.sendBtnDisabled,
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            {sendMessage.isPending ? (
-              <ActivityIndicator size="small" color={colors.white} />
+          {draft.trim() ? (
+            <Pressable
+              onPress={handleSend}
+              disabled={sendMessage.isPending}
+              style={({ pressed }) => [
+                styles.sendBtn,
+                sendMessage.isPending && styles.sendBtnDisabled,
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              {sendMessage.isPending ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Ionicons name="send" size={18} color={colors.white} />
+              )}
+            </Pressable>
+          ) : (
+            voiceSending ? (
+              <View style={styles.sendBtn}>
+                <ActivityIndicator size="small" color={colors.white} />
+              </View>
             ) : (
-              <Ionicons name="send" size={18} color={colors.white} />
-            )}
-          </Pressable>
+              <VoiceRecorder
+                onRecorded={handleRecorded}
+                disabled={sendMessage.isPending}
+              />
+            )
+          )}
         </View>
       </SafeAreaView>
     </KeyboardAvoidingView>

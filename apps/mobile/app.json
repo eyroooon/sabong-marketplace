@@ -18,14 +18,18 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.bloodlineph.app"
+      "bundleIdentifier": "com.bloodlineph.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Hold to record voice notes for your chats"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0a0a0a"
       },
-      "package": "com.bloodlineph.app"
+      "package": "com.bloodlineph.app",
+      "permissions": ["RECORD_AUDIO"]
     },
     "web": {
       "bundler": "metro",
@@ -42,7 +46,8 @@
           "imageWidth": 200
         }
       ],
-      "expo-video"
+      "expo-video",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

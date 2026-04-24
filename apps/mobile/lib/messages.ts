@@ -91,24 +91,86 @@ export function useConversationMessages(conversationId: string | undefined) {
   });
 }
 
+export interface SendMessageInput {
+  content: string;
+  offerAmount?: number;
+  /** Set to "voice", "image", or "video" when sending a media attachment. */
+  messageType?: Message["messageType"];
+  /** CDN URL returned by POST /messages/upload */
+  mediaUrl?: string;
+  /** Duration in milliseconds (for voice messages). */
+  mediaDurationMs?: number;
+}
+
 export function useSendMessage(conversationId: string) {
   const qc = useQueryClient();
-  return useMutation<Message, Error, { content: string; offerAmount?: number }>(
-    {
-      mutationFn: (input) =>
-        apiPost<Message>(`/messages/conversations/${conversationId}`, {
-          content: input.content,
-          messageType: input.offerAmount != null ? "offer" : "text",
-          offerAmount: input.offerAmount,
-        }),
-      onSuccess: () => {
-        qc.invalidateQueries({
-          queryKey: ["conversations", conversationId, "messages"],
-        });
-        qc.invalidateQueries({ queryKey: ["conversations"] });
-      },
+  return useMutation<Message, Error, SendMessageInput>({
+    mutationFn: (input) => {
+      const type =
+        input.messageType ??
+        (input.offerAmount != null ? "offer" : "text");
+      return apiPost<Message>(`/messages/conversations/${conversationId}`, {
+        content: input.content,
+        messageType: type,
+        offerAmount: input.offerAmount,
+        mediaUrl: input.mediaUrl,
+        mediaDurationMs: input.mediaDurationMs,
+      });
     },
-  );
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["conversations", conversationId, "messages"],
+      });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Media upload helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Upload a local file (audio, image, video) to the chat media endpoint.
+ * Returns the CDN URL + metadata.
+ */
+export async function uploadChatMedia(input: {
+  uri: string;
+  name: string;
+  mimeType: string;
+}): Promise<{ url: string; mimeType: string; sizeBytes: number }> {
+  const { getAccessToken } = await import("./api");
+  const { API_BASE } = await import("./api");
+
+  const form = new FormData();
+  form.append("file", {
+    uri: input.uri,
+    name: input.name,
+    type: input.mimeType,
+  } as unknown as Blob);
+
+  const token = await getAccessToken();
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/messages/upload`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+
+  if (!res.ok) {
+    let message = `Upload failed (${res.status})`;
+    try {
+      const err = (await res.json()) as { message?: string; error?: string };
+      message = err.message ?? err.error ?? message;
+    } catch {
+      // non-JSON body
+    }
+    throw new Error(message);
+  }
+
+  return res.json() as Promise<{ url: string; mimeType: string; sizeBytes: number }>;
 }
 
 export function useStartConversation() {
