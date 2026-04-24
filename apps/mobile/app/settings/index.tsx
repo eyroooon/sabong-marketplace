@@ -100,6 +100,12 @@ export default function SettingsScreen() {
 
         <Section title="Support">
           <Row
+            icon="sparkles-outline"
+            label="Ask AI"
+            sub="24/7 Claude assistant"
+            onPress={() => router.push("/support")}
+          />
+          <Row
             icon="help-circle-outline"
             label="Help Center"
             rightLabel="Web"
