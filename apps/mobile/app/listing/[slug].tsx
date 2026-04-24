@@ -219,7 +219,12 @@ export default function ListingDetailScreen() {
 
           {/* Seller card */}
           {data.seller ? (
-            <View style={styles.sellerCard}>
+            <Pressable
+              style={styles.sellerCard}
+              onPress={() =>
+                router.push(`/sellers/${data.seller!.id}` as never)
+              }
+            >
               <View style={styles.sellerIcon}>
                 <Ionicons name="person" size={20} color={colors.white} />
               </View>
@@ -247,7 +252,12 @@ export default function ListingDetailScreen() {
                   <Text style={styles.sellerSub}>New seller</Text>
                 )}
               </View>
-            </View>
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={colors.muted}
+              />
+            </Pressable>
           ) : null}
 
           {/* Specs */}

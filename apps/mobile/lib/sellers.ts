@@ -34,6 +34,7 @@ export interface SellerProfile {
   verificationStatus: "pending" | "verified" | "rejected" | null;
   verifiedAt: string | null;
   totalSales: number;
+  totalListings?: number;
   avgRating: string;
   ratingCount: number;
   responseRate: string | null;
@@ -41,6 +42,10 @@ export interface SellerProfile {
   plan: "free" | "basic" | "pro";
   isFeaturedBreeder: boolean;
   createdAt: string;
+  // Public profile extras
+  description?: string | null;
+  avatarUrl?: string | null;
+  coverPhotoUrl?: string | null;
 }
 
 export type PlanTier = "free" | "basic" | "pro";
@@ -157,6 +162,19 @@ export function useUpdateSellerProfile() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["sellers", "me"] });
     },
+  });
+}
+
+/**
+ * Public seller profile by seller_profiles.id (not user id).
+ * No auth required — safe to call from any screen.
+ */
+export function usePublicSellerProfile(sellerId: string | undefined) {
+  return useQuery<SellerProfile, Error>({
+    queryKey: ["sellers", "public", sellerId],
+    enabled: !!sellerId,
+    queryFn: () => apiGet<SellerProfile>(`/sellers/${sellerId}`),
+    staleTime: 30_000,
   });
 }
 
