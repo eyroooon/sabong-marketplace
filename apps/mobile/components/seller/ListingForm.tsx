@@ -8,7 +8,9 @@
 import React, { useState } from "react";
 import {
   Image,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -75,10 +77,17 @@ export const EMPTY_LISTING_FORM: ListingFormState = {
 export function listingFormToPayload(
   form: ListingFormState,
 ): CreateListingInput {
+  const toFiniteNumber = (s: string): number | undefined => {
+    if (!s) return undefined;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const priceNum = Number(form.price);
   const body: CreateListingInput = {
     title: form.title.trim(),
     category: form.category,
-    price: Number(form.price),
+    price: Number.isFinite(priceNum) ? priceNum : 0,
     locationProvince: form.locationProvince,
     locationCity: form.locationCity.trim(),
     priceType: form.priceType,
@@ -90,8 +99,10 @@ export function listingFormToPayload(
   if (form.breed) body.breed = form.breed;
   const bloodline = form.bloodline.trim();
   if (bloodline) body.bloodline = bloodline;
-  if (form.ageMonths) body.ageMonths = Number(form.ageMonths);
-  if (form.weightKg) body.weightKg = Number(form.weightKg);
+  const ageMonths = toFiniteNumber(form.ageMonths);
+  if (ageMonths !== undefined) body.ageMonths = ageMonths;
+  const weightKg = toFiniteNumber(form.weightKg);
+  if (weightKg !== undefined) body.weightKg = weightKg;
   const color = form.color.trim();
   if (color) body.color = color;
   const legColor = form.legColor.trim();
@@ -104,14 +115,16 @@ export function listingFormToPayload(
   if (damInfo) body.damInfo = damInfo;
   const vaccinationStatus = form.vaccinationStatus.trim();
   if (vaccinationStatus) body.vaccinationStatus = vaccinationStatus;
-  if (form.shippingFee) body.shippingFee = Number(form.shippingFee);
+  const shippingFee = toFiniteNumber(form.shippingFee);
+  if (shippingFee !== undefined) body.shippingFee = shippingFee;
   return body;
 }
 
 export function isListingFormValid(form: ListingFormState): string | null {
   if (!form.title.trim()) return "Title is required.";
   if (!form.category) return "Category is required.";
-  if (!form.price || Number(form.price) <= 0)
+  const priceNum = Number(form.price);
+  if (!form.price || !Number.isFinite(priceNum) || priceNum <= 0)
     return "Price must be a positive number.";
   if (!form.locationProvince) return "Province is required.";
   if (!form.locationCity.trim()) return "City/municipality is required.";
@@ -437,7 +450,7 @@ function Picker({
       <Text style={styles.fieldLabel}>{label}</Text>
       <Pressable
         style={styles.input}
-        onPress={() => setOpen((o) => !o)}
+        onPress={() => setOpen(true)}
         accessibilityRole="button"
         accessibilityLabel={label}
       >
@@ -455,32 +468,48 @@ function Picker({
           color={colors.muted}
         />
       </Pressable>
-      {open ? (
-        <View style={styles.dropdown}>
-          {options.map((opt) => (
-            <Pressable
-              key={opt.value || "none"}
-              style={[
-                styles.dropdownItem,
-                opt.value === value && styles.dropdownItemActive,
-              ]}
-              onPress={() => {
-                onSelect(opt.value);
-                setOpen(false);
-              }}
-            >
-              <Text
-                style={[
-                  styles.dropdownItemText,
-                  opt.value === value && styles.dropdownItemTextActive,
-                ]}
-              >
-                {opt.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setOpen(false)}
+        >
+          <Pressable
+            style={styles.modalSheet}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={styles.modalTitle}>{label}</Text>
+            <ScrollView style={styles.modalList}>
+              {options.map((opt) => (
+                <Pressable
+                  key={opt.value || "none"}
+                  style={[
+                    styles.dropdownItem,
+                    opt.value === value && styles.dropdownItemActive,
+                  ]}
+                  onPress={() => {
+                    onSelect(opt.value);
+                    setOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownItemText,
+                      opt.value === value && styles.dropdownItemTextActive,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -555,13 +584,30 @@ const styles = StyleSheet.create({
   pickerPlaceholder: {
     color: colors.muted,
   },
-  dropdown: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radii.md,
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
     backgroundColor: colors.background,
-    maxHeight: 280,
-    overflow: "hidden",
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    maxHeight: "70%",
+    paddingTop: spacing[4],
+    paddingBottom: spacing[6],
+  },
+  modalTitle: {
+    fontSize: fontSize.base,
+    fontWeight: fontWeight.bold,
+    color: colors.foreground,
+    paddingHorizontal: spacing[4],
+    paddingBottom: spacing[3],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalList: {
+    maxHeight: 400,
   },
   dropdownItem: {
     paddingHorizontal: 12,
