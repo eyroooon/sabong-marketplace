@@ -123,6 +123,15 @@ export function listingFormToPayload(
 export function isListingFormValid(form: ListingFormState): string | null {
   if (!form.title.trim()) return "Title is required.";
   if (!form.category) return "Category is required.";
+  // API requires description to be 20–5000 characters (class-validator
+  // on the backend DTO). Match that here so the user gets a friendly
+  // error instead of a 400 from the server.
+  const description = form.description.trim();
+  if (!description) return "Description is required.";
+  if (description.length < 20)
+    return "Description must be at least 20 characters.";
+  if (description.length > 5000)
+    return "Description must be 5000 characters or fewer.";
   const priceNum = Number(form.price);
   if (!form.price || !Number.isFinite(priceNum) || priceNum <= 0)
     return "Price must be a positive number.";

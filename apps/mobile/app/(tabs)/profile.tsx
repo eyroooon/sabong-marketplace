@@ -63,6 +63,11 @@ export default function ProfileScreen() {
 
         <View style={styles.menu}>
           <MenuItem
+            icon="briefcase-outline"
+            label="Seller Dashboard"
+            onPress={() => router.push("/seller/dashboard")}
+          />
+          <MenuItem
             icon="cube-outline"
             label="My Orders"
             onPress={() => router.push("/orders")}

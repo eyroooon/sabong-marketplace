@@ -101,7 +101,9 @@ export default function SellerDashboardScreen() {
                 styles.planBadge,
                 { backgroundColor: PLAN_COLORS[myPlan.data.plan].bg },
               ]}
-              onPress={() => router.push("/plans")}
+              // /plans screen is built in Phase C6; typed-route cast
+              // dropped once the file exists.
+              onPress={() => router.push("/plans" as never)}
             >
               <Ionicons
                 name="ribbon"
